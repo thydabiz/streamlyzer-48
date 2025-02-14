@@ -4,8 +4,8 @@ import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {
-  // Sample HLS stream - replace with your actual stream URL
-  const sampleStream = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+  // Using a reliable test HLS stream
+  const sampleStream = "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8";
 
   return (
     <DashboardLayout>
