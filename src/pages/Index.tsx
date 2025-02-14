@@ -1,6 +1,7 @@
 
 import DashboardLayout from "@/components/DashboardLayout";
 import VideoPlayer from "@/components/VideoPlayer";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   // Sample HLS stream - replace with your actual stream URL
