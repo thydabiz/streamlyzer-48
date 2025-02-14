@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Menu, Tv, Film, Heart, User } from 'lucide-react';
 
@@ -9,6 +9,28 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+
+  // Handle TV remote navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case 'ArrowUp':
+          setFocusedIndex(prev => Math.max(0, prev - 1));
+          break;
+        case 'ArrowDown':
+          setFocusedIndex(prev => Math.min(2, prev + 1));
+          break;
+        case 'Enter':
+          const buttons = document.querySelectorAll('[role="button"]');
+          (buttons[focusedIndex] as HTMLElement)?.click();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusedIndex]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -18,11 +40,16 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           variant="ghost" 
           size="icon"
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="focus:ring-4 focus:ring-white/20 focus:outline-none"
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-semibold">Streamlyzer</h1>
-        <Button variant="ghost" size="icon">
+        <h1 className="text-2xl font-semibold">Streamlyzer</h1>
+        <Button 
+          variant="ghost" 
+          size="icon"
+          className="focus:ring-4 focus:ring-white/20 focus:outline-none"
+        >
           <User className="h-5 w-5" />
         </Button>
       </nav>
@@ -35,17 +62,24 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       >
         <div className="p-4 space-y-4">
           <div className="border-b border-white/10 pb-4">
-            <h2 className="text-lg font-semibold">Menu</h2>
+            <h2 className="text-2xl font-semibold">Menu</h2>
           </div>
-          <Button variant="ghost" className="w-full justify-start">
-            <Tv className="mr-2 h-4 w-4" /> Live TV
-          </Button>
-          <Button variant="ghost" className="w-full justify-start">
-            <Film className="mr-2 h-4 w-4" /> Movies & Shows
-          </Button>
-          <Button variant="ghost" className="w-full justify-start">
-            <Heart className="mr-2 h-4 w-4" /> Favorites
-          </Button>
+          {[
+            { icon: Tv, label: 'Live TV', index: 0 },
+            { icon: Film, label: 'Movies & Shows', index: 1 },
+            { icon: Heart, label: 'Favorites', index: 2 },
+          ].map(({ icon: Icon, label, index }) => (
+            <Button
+              key={label}
+              variant="ghost"
+              className={`w-full justify-start text-xl p-6 focus:ring-4 focus:ring-white/20 focus:outline-none ${
+                focusedIndex === index ? 'bg-white/10 ring-4 ring-white/20' : ''
+              }`}
+              onFocus={() => setFocusedIndex(index)}
+            >
+              <Icon className="mr-4 h-6 w-6" /> {label}
+            </Button>
+          ))}
         </div>
       </div>
 
