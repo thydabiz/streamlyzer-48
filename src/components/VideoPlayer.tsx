@@ -54,15 +54,40 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
           controls
           onReady={handleReady}
           onError={handleError}
+          playsinline // Important for mobile and TV devices
           config={{
             file: {
               forceHLS: true,
               hlsOptions: {
-                debug: true,
+                debug: false, // Disable debug mode in production
                 enableWorker: true,
-                lowLatencyMode: true,
+                lowLatencyMode: false, // Disable low latency mode for better buffering
+                backBufferLength: 90, // Increase buffer length for smoother playback
+                maxBufferLength: 30,
+                maxMaxBufferLength: 600,
+                maxBufferSize: 60 * 1000 * 1000, // 60MB buffer size
+                maxBufferHole: 0.5,
+                highBufferWatchdogPeriod: 2,
+                nudgeOffset: 0.2,
+                startLevel: -1, // Auto quality selection
+                autoStartLoad: true,
+                abrEwmaDefaultEstimate: 500000, // 500kbps default bandwidth estimate
+                abrBandWidthFactor: 0.95,
+                abrBandWidthUpFactor: 0.7,
+                abrMaxWithRealBitrate: true,
+                liveSyncDurationCount: 3,
+                liveMaxLatencyDurationCount: 10,
+                progressive: true, // Enable progressive download
+                testBandwidth: true,
               },
             },
+          }}
+          playbackRate={1.0}
+          volume={1}
+          muted={false}
+          style={{ 
+            objectFit: 'contain',
+            background: '#000',
           }}
         />
       </div>
