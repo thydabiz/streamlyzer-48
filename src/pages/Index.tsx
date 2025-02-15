@@ -1,8 +1,8 @@
-
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getChannels, getPrograms, getCurrentProgram } from "@/services/epgService";
 import { StreamSetupDialog } from "@/components/StreamSetupDialog";
 import {
@@ -11,13 +11,19 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { Search } from "lucide-react";
 import type { Channel } from "@/types/epg";
 import type { StreamCredentials } from "@/types/auth";
+import type { ContentFilters } from "@/types/filters";
 
 const Index = () => {
   const [selectedChannel, setSelectedChannel] = useState<Channel>(getChannels()[0]);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [streamCredentials, setStreamCredentials] = useState<StreamCredentials | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [yearFilter, setYearFilter] = useState<number | undefined>();
+  const [ratingFilter, setRatingFilter] = useState<string | undefined>();
+  const [sortBy, setSortBy] = useState<'name' | 'date' | 'rating'>('name');
 
   const channels = getChannels();
   const programs = getPrograms({ category: categoryFilter });
@@ -30,7 +36,11 @@ const Index = () => {
   const handleCredentialsSubmit = (credentials: StreamCredentials) => {
     setStreamCredentials(credentials);
     console.log('Stream credentials saved:', credentials);
-    // Here you would typically initialize your streaming service
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    // Here you would typically debounce the search
   };
 
   return (
@@ -62,6 +72,39 @@ const Index = () => {
                 TV Shows
               </TabsTrigger>
             </TabsList>
+
+            <div className="flex items-center gap-4 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Search content..."
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  className="pl-10 py-6 text-lg"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSortBy('name')}
+                className={`${sortBy === 'name' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+              >
+                Name
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setSortBy('date')}
+                className={`${sortBy === 'date' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+              >
+                Date
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setSortBy('rating')}
+                className={`${sortBy === 'rating' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+              >
+                Rating
+              </Button>
+            </div>
 
             <TabsContent value="live" className="space-y-6">
               <section>
@@ -150,6 +193,20 @@ const Index = () => {
                         {genre}
                       </Button>
                     ))}
+                    <Button
+                      variant="outline"
+                      onClick={() => setYearFilter(2024)}
+                      className={`${yearFilter === 2024 ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+                    >
+                      2024
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setRatingFilter('PG-13')}
+                      className={`${ratingFilter === 'PG-13' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+                    >
+                      PG-13
+                    </Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -184,6 +241,20 @@ const Index = () => {
                         {genre}
                       </Button>
                     ))}
+                    <Button
+                      variant="outline"
+                      onClick={() => setYearFilter(2024)}
+                      className={`${yearFilter === 2024 ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+                    >
+                      2024
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setRatingFilter('TV-MA')}
+                      className={`${ratingFilter === 'TV-MA' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+                    >
+                      TV-MA
+                    </Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
