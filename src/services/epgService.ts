@@ -46,8 +46,19 @@ export const getPrograms = (filters?: {
   category?: string;
   channel?: string;
   timeRange?: { start: string; end: string };
+  searchQuery?: string;
 }): EPGProgram[] => {
   let filteredPrograms = [...samplePrograms];
+
+  if (filters?.searchQuery) {
+    const query = filters.searchQuery.toLowerCase();
+    filteredPrograms = filteredPrograms.filter(
+      program => 
+        program.title.toLowerCase().includes(query) ||
+        program.description.toLowerCase().includes(query) ||
+        program.category.toLowerCase().includes(query)
+    );
+  }
 
   if (filters?.category) {
     filteredPrograms = filteredPrograms.filter(
@@ -79,5 +90,23 @@ export const getCurrentProgram = (channelId: string): EPGProgram | undefined => 
       program.channel === channelId &&
       new Date(program.startTime) <= now &&
       new Date(program.endTime) >= now
+  );
+};
+
+export const getProgramSchedule = (
+  channelId: string,
+  date: Date = new Date()
+): EPGProgram[] => {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return samplePrograms.filter(
+    program =>
+      program.channel === channelId &&
+      new Date(program.startTime) >= startOfDay &&
+      new Date(program.endTime) <= endOfDay
   );
 };
