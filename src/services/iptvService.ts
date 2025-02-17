@@ -35,7 +35,10 @@ export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
       type: 'xtream',
       url: credentials.url,
       username: credentials.username,
-      password: credentials.password
+      password: credentials.password,
+      user_id: null,  // Adding null for user_id since it's required by type but optional in DB
+      mac_address: null,
+      serial_number: null
     }, {
       onConflict: 'type'
     });
