@@ -4,21 +4,33 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
+import { saveStreamCredentials } from '@/services/iptvService';
+import type { StreamCredentials } from '@/types/auth';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [url, setUrl] = useState('');
   const { signIn, signUp } = useAuth();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const credentials: StreamCredentials = {
+        type: 'xtream',
+        url: url,
+        username: username,
+        password: password
+      };
+
       if (isLogin) {
-        await signIn(email, password);
+        await signIn(username, password);
+        await saveStreamCredentials(credentials);
       } else {
-        await signUp(email, password);
+        await signUp(username, password);
+        await saveStreamCredentials(credentials);
         toast({
           title: 'Account created',
           description: 'Please check your email to verify your account',
@@ -52,10 +64,10 @@ const Auth = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              placeholder="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
             />
           </div>
@@ -65,6 +77,15 @@ const Auth = () => {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <Input
+              type="url"
+              placeholder="Xtream URL"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
               required
             />
           </div>
