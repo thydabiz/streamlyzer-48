@@ -1,28 +1,26 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
-import { StreamSetupDialog } from "@/components/StreamSetupDialog";
+import { EPGSettingsDialog } from "@/components/EPGSettingsDialog";
+import { CredentialsForm } from "@/components/CredentialsForm";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { getChannels } from "@/services/epgService";
+import { getStoredCredentials } from "@/services/iptvService";
 import { useDebounce } from "@/hooks/use-debounce";
 import SearchBar from "@/components/SearchBar";
 import LiveTV from "@/components/LiveTV";
 import Movies from "@/components/Movies";
 import Shows from "@/components/Shows";
 import type { Channel } from "@/types/epg";
-import type { StreamCredentials } from "@/types/auth";
-import { EPGSettingsDialog } from "@/components/EPGSettingsDialog";
-import { startEPGRefreshMonitoring } from "@/services/iptvService";
-import { useEffect } from "react";
 
 const Index = () => {
-  const [selectedChannel, setSelectedChannel] = useState<Channel>(getChannels()[0]);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
-  const [streamCredentials, setStreamCredentials] = useState<StreamCredentials | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<number | undefined>();
   const [ratingFilter, setRatingFilter] = useState<string | undefined>();
@@ -30,68 +28,50 @@ const Index = () => {
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  const handleCredentialsSubmit = (credentials: StreamCredentials) => {
-    setStreamCredentials(credentials);
-    console.log('Stream credentials saved:', credentials);
-  };
+  const { data: credentials, isLoading: isLoadingCredentials } = useQuery({
+    queryKey: ['credentials'],
+    queryFn: getStoredCredentials,
+  });
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+  const handleCredentialsSuccess = () => {
+    // Refresh the credentials query
+    window.location.reload();
   };
-
-  useEffect(() => {
-    if (streamCredentials) {
-      startEPGRefreshMonitoring().catch(console.error);
-    }
-  }, [streamCredentials]);
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fadeIn">
-        {!streamCredentials ? (
-          <div className="flex items-center justify-center h-[50vh]">
-            <StreamSetupDialog onCredentialsSubmit={handleCredentialsSubmit} />
+        {!credentials ? (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <CredentialsForm onSuccess={handleCredentialsSuccess} />
           </div>
         ) : (
           <Tabs defaultValue="live" className="space-y-6">
             <div className="flex items-center justify-between">
               <TabsList className="grid w-full grid-cols-3 h-14 text-lg">
-                <TabsTrigger 
-                  value="live"
-                  className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
-                >
-                  Live TV
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="movies"
-                  className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
-                >
-                  Movies
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="shows"
-                  className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
-                >
-                  TV Shows
-                </TabsTrigger>
+                <TabsTrigger value="live">Live TV</TabsTrigger>
+                <TabsTrigger value="movies">Movies</TabsTrigger>
+                <TabsTrigger value="shows">TV Shows</TabsTrigger>
               </TabsList>
               <EPGSettingsDialog />
             </div>
 
             <SearchBar
               searchQuery={searchQuery}
-              onSearchChange={handleSearchChange}
+              onSearchChange={(e) => setSearchQuery(e.target.value)}
               sortBy={sortBy}
               onSortChange={setSortBy}
             />
 
             <TabsContent value="live">
-              <LiveTV
-                selectedChannel={selectedChannel}
-                onChannelSelect={setSelectedChannel}
-                categoryFilter={categoryFilter}
-                onCategoryChange={setCategoryFilter}
-              />
+              {selectedChannel && (
+                <LiveTV
+                  selectedChannel={selectedChannel}
+                  onChannelSelect={setSelectedChannel}
+                  categoryFilter={categoryFilter}
+                  onCategoryChange={setCategoryFilter}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="movies">
