@@ -4,6 +4,12 @@ export interface StreamCredentials {
   url: string;
   username?: string;
   password?: string;
-  macAddress?: string;
-  serialNumber?: string;
+  mac_address?: string;
+  serial_number?: string;
+}
+
+export interface XtreamCredentials {
+  url: string;
+  username: string;
+  password: string;
 }

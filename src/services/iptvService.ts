@@ -22,7 +22,7 @@ export const getStoredCredentials = async () => {
   const { data, error } = await supabase
     .from('stream_credentials')
     .select('*')
-    .maybeSingle();  // Changed from .single() to .maybeSingle()
+    .maybeSingle();
 
   if (error) throw error;
   return data;
@@ -34,10 +34,10 @@ export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
     .upsert({
       type: 'xtream',
       url: credentials.url,
-      encrypted_username: credentials.username,  // Updated to match new schema
-      encrypted_password: credentials.password   // Updated to match new schema
+      username: credentials.username,
+      password: credentials.password
     }, {
-      onConflict: 'type'  // Since we only want one set of credentials
+      onConflict: 'type'
     });
 
   if (error) throw error;
@@ -47,7 +47,7 @@ export const getEPGSettings = async () => {
   const { data, error } = await supabase
     .from('epg_settings')
     .select('*')
-    .maybeSingle();  // Changed from .single() to .maybeSingle()
+    .maybeSingle();
 
   if (error) throw error;
   return data ?? { refresh_days: 7 };
@@ -58,7 +58,8 @@ export const saveEPGSettings = async (refreshDays: number) => {
     .from('epg_settings')
     .upsert({
       refresh_days: refreshDays,
-      last_refresh: new Date().toISOString()
+      last_refresh: new Date().toISOString(),
+      user_id: null  // This is now optional but we need to provide it
     }, {
       onConflict: 'id'
     });
@@ -84,7 +85,7 @@ export const startEPGRefreshMonitoring = async () => {
       const { data } = await supabase
         .from('epg_settings')
         .select('last_refresh')
-        .maybeSingle();  // Changed from .single() to .maybeSingle()
+        .maybeSingle();
 
       if (!data?.last_refresh) return;
 
@@ -111,7 +112,8 @@ export const refreshEPGData = async () => {
     await supabase
       .from('epg_settings')
       .upsert({
-        last_refresh: new Date().toISOString()
+        last_refresh: new Date().toISOString(),
+        user_id: null  // This is now optional but we need to provide it
       }, {
         onConflict: 'id'
       });

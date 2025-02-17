@@ -32,16 +32,21 @@ export const StreamSetupDialog = ({ onCredentialsSubmit }: StreamSetupDialogProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (!credentials.url) {
+      if (!credentials.url || !credentials.username || !credentials.password) {
         toast({
           title: "Error",
-          description: "URL is required",
+          description: "All fields are required",
           variant: "destructive",
         });
         return;
       }
 
-      await saveStreamCredentials(credentials);
+      await saveStreamCredentials({
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password
+      });
+      
       onCredentialsSubmit(credentials);
       setOpen(false);
       toast({
@@ -72,26 +77,28 @@ export const StreamSetupDialog = ({ onCredentialsSubmit }: StreamSetupDialogProp
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <Input
-            placeholder="Server URL"
-            value={credentials.url}
-            onChange={e => setCredentials(prev => ({ ...prev, url: e.target.value }))}
-            className="text-lg p-6"
-          />
-          <Input
-            placeholder="Username"
-            value={credentials.username}
-            onChange={e => setCredentials(prev => ({ ...prev, username: e.target.value }))}
-            className="text-lg p-6"
-          />
-          <Input
-            type="password"
-            placeholder="Password"
-            value={credentials.password}
-            onChange={e => setCredentials(prev => ({ ...prev, password: e.target.value }))}
-            className="text-lg p-6"
-          />
-          <DialogFooter>
+          <div className="space-y-4">
+            <Input
+              placeholder="Server URL"
+              value={credentials.url}
+              onChange={e => setCredentials(prev => ({ ...prev, url: e.target.value }))}
+              className="text-lg p-6"
+            />
+            <Input
+              placeholder="Username"
+              value={credentials.username || ''}
+              onChange={e => setCredentials(prev => ({ ...prev, username: e.target.value }))}
+              className="text-lg p-6"
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={credentials.password || ''}
+              onChange={e => setCredentials(prev => ({ ...prev, password: e.target.value }))}
+              className="text-lg p-6"
+            />
+          </div>
+          <DialogFooter className="mt-4">
             <Button type="submit" size="lg" className="text-lg">
               Update Credentials
             </Button>
