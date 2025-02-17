@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { StreamSetupDialog } from "@/components/StreamSetupDialog";
@@ -16,6 +15,9 @@ import Movies from "@/components/Movies";
 import Shows from "@/components/Shows";
 import type { Channel } from "@/types/epg";
 import type { StreamCredentials } from "@/types/auth";
+import { EPGSettingsDialog } from "@/components/EPGSettingsDialog";
+import { startEPGRefreshMonitoring } from "@/services/iptvService";
+import { useEffect } from "react";
 
 const Index = () => {
   const [selectedChannel, setSelectedChannel] = useState<Channel>(getChannels()[0]);
@@ -37,6 +39,12 @@ const Index = () => {
     setSearchQuery(e.target.value);
   };
 
+  useEffect(() => {
+    if (streamCredentials) {
+      startEPGRefreshMonitoring().catch(console.error);
+    }
+  }, [streamCredentials]);
+
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fadeIn">
@@ -46,26 +54,29 @@ const Index = () => {
           </div>
         ) : (
           <Tabs defaultValue="live" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 h-14 text-lg">
-              <TabsTrigger 
-                value="live"
-                className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
-              >
-                Live TV
-              </TabsTrigger>
-              <TabsTrigger 
-                value="movies"
-                className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
-              >
-                Movies
-              </TabsTrigger>
-              <TabsTrigger 
-                value="shows"
-                className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
-              >
-                TV Shows
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex items-center justify-between">
+              <TabsList className="grid w-full grid-cols-3 h-14 text-lg">
+                <TabsTrigger 
+                  value="live"
+                  className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
+                >
+                  Live TV
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="movies"
+                  className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
+                >
+                  Movies
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="shows"
+                  className="data-[state=active]:bg-white/10 focus:ring-4 focus:ring-white/20"
+                >
+                  TV Shows
+                </TabsTrigger>
+              </TabsList>
+              <EPGSettingsDialog />
+            </div>
 
             <SearchBar
               searchQuery={searchQuery}

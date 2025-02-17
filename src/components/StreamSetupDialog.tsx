@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,23 +37,32 @@ export const StreamSetupDialog = ({ onCredentialsSubmit }: StreamSetupDialogProp
   });
   const [open, setOpen] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!credentials.url) {
+    try {
+      if (!credentials.url) {
+        toast({
+          title: "Error",
+          description: "URL is required",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await saveStreamCredentials(credentials);
+      onCredentialsSubmit(credentials);
+      setOpen(false);
+      toast({
+        title: "Success",
+        description: "Stream credentials saved successfully",
+      });
+    } catch (error) {
       toast({
         title: "Error",
-        description: "URL is required",
+        description: error instanceof Error ? error.message : "Failed to save credentials",
         variant: "destructive",
       });
-      return;
     }
-
-    onCredentialsSubmit(credentials);
-    setOpen(false);
-    toast({
-      title: "Success",
-      description: "Stream credentials saved successfully",
-    });
   };
 
   return (
