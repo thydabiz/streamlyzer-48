@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import type { StreamCredentials } from "@/types/auth";
+import { saveStreamCredentials } from "@/services/iptvService";
 
 interface StreamSetupDialogProps {
   onCredentialsSubmit: (credentials: StreamCredentials) => void;
@@ -79,7 +81,7 @@ export const StreamSetupDialog = ({ onCredentialsSubmit }: StreamSetupDialogProp
             Enter your streaming service credentials
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit}>
           <Select
             value={credentialType}
             onValueChange={(value: 'xtream' | 'm3u' | 'mac') => {
