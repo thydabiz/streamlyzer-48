@@ -27,3 +27,94 @@ export const getStoredCredentials = async () => {
   if (error && error.code !== 'PGRST116') throw error;
   return data;
 };
+
+export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
+  const { error } = await supabase
+    .from('stream_credentials')
+    .upsert({
+      type: 'xtream',
+      url: credentials.url,
+      username: credentials.username,
+      password: credentials.password
+    });
+
+  if (error) throw error;
+};
+
+export const getEPGSettings = async () => {
+  const { data, error } = await supabase
+    .from('epg_settings')
+    .select('*')
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data ?? { refresh_days: 7 };
+};
+
+export const saveEPGSettings = async (refreshDays: number) => {
+  const { error } = await supabase
+    .from('epg_settings')
+    .upsert({
+      refresh_days: refreshDays,
+      last_refresh: new Date().toISOString()
+    });
+
+  if (error) throw error;
+};
+
+let epgRefreshInterval: number;
+
+export const startEPGRefreshMonitoring = async () => {
+  const settings = await getEPGSettings();
+  const refreshMs = settings.refresh_days * 24 * 60 * 60 * 1000;
+
+  // Clear existing interval if any
+  if (epgRefreshInterval) {
+    clearInterval(epgRefreshInterval);
+  }
+
+  // Set up new interval
+  epgRefreshInterval = window.setInterval(async () => {
+    try {
+      // Check if refresh is needed
+      const { data } = await supabase
+        .from('epg_settings')
+        .select('last_refresh')
+        .single();
+
+      if (!data?.last_refresh) return;
+
+      const lastRefresh = new Date(data.last_refresh);
+      const now = new Date();
+      const diffMs = now.getTime() - lastRefresh.getTime();
+
+      if (diffMs >= refreshMs) {
+        // Trigger EPG refresh
+        await refreshEPGData();
+      }
+    } catch (error) {
+      console.error('Error checking EPG refresh:', error);
+    }
+  }, 60000); // Check every minute
+};
+
+export const refreshEPGData = async () => {
+  try {
+    const credentials = await getStoredCredentials();
+    if (!credentials) throw new Error('No stream credentials found');
+
+    // Update last refresh time
+    await supabase
+      .from('epg_settings')
+      .upsert({
+        last_refresh: new Date().toISOString()
+      });
+
+    // TODO: Implement actual EPG data fetching based on provider type
+    console.log('Refreshing EPG data...');
+
+  } catch (error) {
+    console.error('Error refreshing EPG data:', error);
+    throw error;
+  }
+};
