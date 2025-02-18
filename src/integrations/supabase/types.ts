@@ -52,7 +52,7 @@ export type Database = {
           last_refresh: string | null
           refresh_days: number
           updated_at: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -60,7 +60,7 @@ export type Database = {
           last_refresh?: string | null
           refresh_days?: number
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -68,7 +68,7 @@ export type Database = {
           last_refresh?: string | null
           refresh_days?: number
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -153,7 +153,7 @@ export type Database = {
           type: string
           updated_at: string | null
           url: string
-          user_id: string
+          user_id: string | null
           username: string | null
         }
         Insert: {
@@ -162,10 +162,10 @@ export type Database = {
           mac_address?: string | null
           password?: string | null
           serial_number?: string | null
-          type: string
+          type?: string
           updated_at?: string | null
           url: string
-          user_id: string
+          user_id?: string | null
           username?: string | null
         }
         Update: {
@@ -177,7 +177,7 @@ export type Database = {
           type?: string
           updated_at?: string | null
           url?: string
-          user_id?: string
+          user_id?: string | null
           username?: string | null
         }
         Relationships: []
