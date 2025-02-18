@@ -19,7 +19,7 @@ export type Database = {
           number: number | null
           stream_url: string
           updated_at: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           channel_id: string
@@ -30,7 +30,7 @@ export type Database = {
           number?: number | null
           stream_url: string
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           channel_id?: string
@@ -41,7 +41,7 @@ export type Database = {
           number?: number | null
           stream_url?: string
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -103,7 +103,7 @@ export type Database = {
           thumbnail: string | null
           title: string
           updated_at: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           category?: string | null
@@ -117,7 +117,7 @@ export type Database = {
           thumbnail?: string | null
           title: string
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           category?: string | null
@@ -131,7 +131,7 @@ export type Database = {
           thumbnail?: string | null
           title?: string
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

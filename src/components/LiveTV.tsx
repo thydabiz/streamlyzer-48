@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
 import { getChannels, getCurrentProgram, getProgramSchedule } from "@/services/epgService";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import type { Channel } from "@/types/epg";
 
 interface LiveTVProps {
@@ -23,11 +23,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
         const channelData = await getChannels();
         setChannels(channelData);
       } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to load channels",
-          variant: "destructive",
-        });
+        toast.error("Failed to load channels");
       } finally {
         setLoading(false);
       }
