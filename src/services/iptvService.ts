@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -10,6 +11,12 @@ interface XtreamCredentials {
 export const authenticateXtream = async (credentials: XtreamCredentials) => {
   try {
     console.log('Authenticating with Xtream service...', credentials.url);
+    
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('You must be logged in to authenticate with IPTV provider');
+    }
     
     // Ensure URL is properly formatted
     let url = credentials.url;
@@ -55,9 +62,12 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
 export const getStoredCredentials = async () => {
   try {
     console.log('Fetching stored credentials...');
+    const { data: { user } } = await supabase.auth.getUser();
+    
     const { data, error } = await supabase
       .from('stream_credentials')
       .select('*')
+      .eq('user_id', user?.id)
       .maybeSingle();
 
     if (error) {
@@ -76,6 +86,11 @@ export const getStoredCredentials = async () => {
 export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
   try {
     console.log('Saving stream credentials...');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('You must be logged in to save credentials');
+    }
+
     const { error } = await supabase
       .from('stream_credentials')
       .upsert({
@@ -83,11 +98,11 @@ export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
         url: credentials.url.replace(/\/$/, ''), // Remove trailing slash if present
         username: credentials.username,
         password: credentials.password,
-        user_id: null,
+        user_id: user.id,
         mac_address: null,
         serial_number: null
       }, {
-        onConflict: 'type'
+        onConflict: 'user_id,type'
       });
 
     if (error) {
@@ -107,9 +122,12 @@ export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
 export const getEPGSettings = async () => {
   try {
     console.log('Fetching EPG settings...');
+    const { data: { user } } = await supabase.auth.getUser();
+    
     const { data, error } = await supabase
       .from('epg_settings')
       .select('*')
+      .eq('user_id', user?.id)
       .maybeSingle();
 
     if (error) {
@@ -129,14 +147,19 @@ export const getEPGSettings = async () => {
 export const saveEPGSettings = async (refreshDays: number) => {
   try {
     console.log('Saving EPG settings...', { refreshDays });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('You must be logged in to save EPG settings');
+    }
+
     const { error } = await supabase
       .from('epg_settings')
       .upsert({
         refresh_days: refreshDays,
         last_refresh: new Date().toISOString(),
-        user_id: null
+        user_id: user.id
       }, {
-        onConflict: 'id'
+        onConflict: 'user_id'
       });
 
     if (error) {
