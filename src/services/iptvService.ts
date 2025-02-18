@@ -13,8 +13,9 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
     console.log('Authenticating with Xtream service...', credentials.url);
     
     // Get current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user?.id) {
       throw new Error('You must be logged in to authenticate with IPTV provider');
     }
     
@@ -62,12 +63,17 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
 export const getStoredCredentials = async () => {
   try {
     console.log('Fetching stored credentials...');
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user?.id) {
+      console.log('No user found, returning null');
+      return null;
+    }
     
     const { data, error } = await supabase
       .from('stream_credentials')
       .select('*')
-      .eq('user_id', user?.id)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (error) {
@@ -86,8 +92,9 @@ export const getStoredCredentials = async () => {
 export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
   try {
     console.log('Saving stream credentials...');
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user?.id) {
       throw new Error('You must be logged in to save credentials');
     }
 
@@ -122,12 +129,17 @@ export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
 export const getEPGSettings = async () => {
   try {
     console.log('Fetching EPG settings...');
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user?.id) {
+      console.log('No user found, returning default settings');
+      return { refresh_days: 7, last_refresh: null };
+    }
     
     const { data, error } = await supabase
       .from('epg_settings')
       .select('*')
-      .eq('user_id', user?.id)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (error) {
@@ -147,8 +159,9 @@ export const getEPGSettings = async () => {
 export const saveEPGSettings = async (refreshDays: number) => {
   try {
     console.log('Saving EPG settings...', { refreshDays });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user?.id) {
       throw new Error('You must be logged in to save EPG settings');
     }
 
