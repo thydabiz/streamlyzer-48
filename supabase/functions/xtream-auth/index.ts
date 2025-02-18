@@ -1,6 +1,5 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,63 +13,65 @@ interface XtreamCredentials {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { url, username, password } = await req.json() as XtreamCredentials;
+    console.log('Starting authentication process...');
+    const credentials = await req.json() as XtreamCredentials;
     
     // Format the authentication URL
-    const authUrl = new URL('/player_api.php', url);
-    authUrl.searchParams.append('username', username);
-    authUrl.searchParams.append('password', password);
+    let authUrl = credentials.url;
+    if (!authUrl.endsWith('/')) {
+      authUrl += '/';
+    }
+    authUrl += 'player_api.php';
+
+    // Add query parameters
+    const url = new URL(authUrl);
+    url.searchParams.append('username', credentials.username);
+    url.searchParams.append('password', credentials.password);
+
+    console.log('Making request to:', url.toString());
 
     // Test authentication with the IPTV provider
-    const response = await fetch(authUrl.toString());
-    const data = await response.json();
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
 
-    if (!response.ok || data.user === undefined) {
-      throw new Error('Authentication failed');
+    const responseText = await response.text();
+    console.log('Raw response:', responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse JSON response:', e);
+      throw new Error('Invalid response from IPTV provider');
     }
 
-    // Create Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    )
-
-    // Store encrypted credentials
-    const { data: encryptedData, error: encryptionError } = await supabaseClient
-      .rpc('encrypt_credentials', {
-        p_username: username,
-        p_password: password,
-        p_encryption_key: Deno.env.get('ENCRYPTION_KEY')
-      })
-
-    if (encryptionError) {
-      throw encryptionError;
+    if (!response.ok) {
+      console.error('HTTP error:', response.status, data);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    // Save credentials
-    const { error: saveError } = await supabaseClient
-      .from('stream_credentials')
-      .upsert({
-        type: 'xtream',
-        url: url,
-        encrypted_username: encryptedData.encrypted_username,
-        encrypted_password: encryptedData.encrypted_password
-      })
-
-    if (saveError) {
-      throw saveError;
+    if (!data || !data.user_info) {
+      console.error('Invalid response format:', data);
+      throw new Error('Invalid response format from IPTV provider');
     }
+
+    console.log('Authentication successful');
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          user: data.user,
+          user: data.user_info,
           server_info: data.server_info
         }
       }),
@@ -82,10 +83,12 @@ serve(async (req) => {
       },
     )
   } catch (error) {
+    console.error('Authentication error:', error);
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message
+        error: error.message || 'Authentication failed'
       }),
       {
         status: 400,

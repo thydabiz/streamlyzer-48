@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -11,9 +10,17 @@ interface XtreamCredentials {
 export const authenticateXtream = async (credentials: XtreamCredentials) => {
   try {
     console.log('Authenticating with Xtream service...', credentials.url);
+    
+    // Ensure URL is properly formatted
+    let url = credentials.url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `http://${url}`;
+    }
+    url = url.replace(/\/$/, ''); // Remove trailing slash if present
+
     const { data, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
-        url: credentials.url.replace(/\/$/, ''), // Remove trailing slash if present
+        url,
         username: credentials.username,
         password: credentials.password
       }
@@ -21,17 +28,26 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
 
     if (error) {
       console.error('Authentication error:', error);
-      throw error;
+      throw new Error(error.message || 'Failed to authenticate with IPTV provider');
     }
-    if (!data.success) {
-      console.error('Authentication failed:', data.error);
-      throw new Error(data.error || 'Failed to authenticate with IPTV provider');
+
+    if (!data || !data.success) {
+      console.error('Authentication failed:', data?.error);
+      throw new Error(data?.error || 'Failed to authenticate with IPTV provider');
     }
+
+    // Save credentials if authentication was successful
+    await saveStreamCredentials({
+      url,
+      username: credentials.username,
+      password: credentials.password
+    });
 
     console.log('Authentication successful');
     return data.data;
   } catch (error) {
     console.error('Authentication error:', error);
+    toast.error(error.message || 'Failed to authenticate with IPTV provider');
     throw error;
   }
 };
