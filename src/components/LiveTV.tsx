@@ -1,27 +1,50 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
 import { getChannels, getCurrentProgram, getProgramSchedule } from "@/services/epgService";
 import type { Channel } from "@/types/epg";
 
 interface LiveTVProps {
-  selectedChannel: Channel;
+  selectedChannel: Channel | null;
   onChannelSelect: (channel: Channel) => void;
   categoryFilter?: string;
   onCategoryChange: (category: string | undefined) => void;
 }
 
 const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryChange }: LiveTVProps) => {
-  const channels = getChannels();
-  const currentProgram = getCurrentProgram(selectedChannel.id);
-  const programSchedule = getProgramSchedule(selectedChannel.id);
-  
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadChannels = async () => {
+      try {
+        const channelData = await getChannels();
+        setChannels(channelData);
+      } catch (error) {
+        toast.error('Failed to load channels');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChannels();
+  }, []);
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64">Loading channels...</div>;
+  }
+
+  if (!channels.length) {
+    return <div className="text-center p-4">No channels available</div>;
+  }
+
   const categories = Array.from(
     new Set(channels.map(channel => getCurrentProgram(channel.id)?.category).filter(Boolean))
   );
 
-  const renderProgramTimeline = () => {
+  const renderProgramTimeline = (channelId: string) => {
+    const programSchedule = getProgramSchedule(channelId);
     const now = new Date();
     const timelineStart = new Date(now.setHours(now.getHours() - 1));
     const timelineEnd = new Date(now.setHours(now.getHours() + 4));
@@ -63,31 +86,16 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
 
   return (
     <div className="space-y-6">
-      <section>
-        <h2 className="text-2xl font-semibold mb-4">Now Playing</h2>
-        <VideoPlayer 
-          url={selectedChannel.streamUrl} 
-          title={`${selectedChannel.name} - ${currentProgram?.title || 'No Program Info'}`} 
-        />
-        {currentProgram && (
-          <>
-            <div className="mt-4 p-4 glass rounded-lg">
-              <h3 className="text-xl font-semibold">{currentProgram.title}</h3>
-              <p className="text-gray-400">{currentProgram.description}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm bg-white/10 px-2 py-1 rounded">
-                  {new Date(currentProgram.startTime).toLocaleTimeString()} - 
-                  {new Date(currentProgram.endTime).toLocaleTimeString()}
-                </span>
-                <span className="text-sm bg-white/10 px-2 py-1 rounded">
-                  {currentProgram.category}
-                </span>
-              </div>
-            </div>
-            {renderProgramTimeline()}
-          </>
-        )}
-      </section>
+      {selectedChannel && (
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Now Playing</h2>
+          <VideoPlayer 
+            url={selectedChannel.streamUrl} 
+            title={`${selectedChannel.name} - ${getCurrentProgram(selectedChannel.id)?.title || 'No Program Info'}`} 
+          />
+          {renderProgramTimeline(selectedChannel.id)}
+        </section>
+      )}
 
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -100,7 +108,6 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
                 onClick={() => onCategoryChange(
                   categoryFilter === category ? undefined : category
                 )}
-                className="focus:ring-4 focus:ring-white/20 focus:outline-none"
               >
                 {category}
               </Button>
@@ -115,7 +122,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
                 key={channel.id}
                 onClick={() => onChannelSelect(channel)}
                 className={`glass rounded-lg p-4 space-y-2 focus:ring-4 focus:ring-white/20 focus:outline-none transition-all ${
-                  selectedChannel.id === channel.id ? 'ring-4 ring-white/20' : ''
+                  selectedChannel?.id === channel.id ? 'ring-4 ring-white/20' : ''
                 }`}
               >
                 <div className="aspect-video bg-gray-800 rounded flex items-center justify-center">
