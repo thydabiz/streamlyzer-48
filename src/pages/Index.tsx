@@ -64,14 +64,12 @@ const Index = () => {
             />
 
             <TabsContent value="live">
-              {selectedChannel && (
-                <LiveTV
-                  selectedChannel={selectedChannel}
-                  onChannelSelect={setSelectedChannel}
-                  categoryFilter={categoryFilter}
-                  onCategoryChange={setCategoryFilter}
-                />
-              )}
+              <LiveTV
+                selectedChannel={selectedChannel}
+                onChannelSelect={setSelectedChannel}
+                categoryFilter={categoryFilter}
+                onCategoryChange={setCategoryFilter}
+              />
             </TabsContent>
 
             <TabsContent value="movies">
