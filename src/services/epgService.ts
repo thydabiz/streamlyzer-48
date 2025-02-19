@@ -2,25 +2,41 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { EPGProgram, Channel } from '@/types/epg';
+import { getStoredCredentials } from './iptvService';
 
 export const getChannels = async (): Promise<Channel[]> => {
-  const { data, error } = await supabase
-    .from('channels')
-    .select('*')
-    .order('number');
+  try {
+    const credentials = await getStoredCredentials();
+    if (!credentials) {
+      throw new Error('No stream credentials found');
+    }
 
-  if (error) {
+    const { data, error } = await supabase.functions.invoke('xtream-auth', {
+      body: {
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password,
+      }
+    });
+
+    if (error || !data.success) {
+      throw new Error('Failed to fetch channels');
+    }
+
+    // Map the API response to our Channel type
+    const channels = data.data.available_channels.map((channel: any) => ({
+      id: channel.stream_id.toString(),
+      name: channel.name,
+      number: channel.num || 0,
+      streamUrl: `${credentials.url}/live/${credentials.username}/${credentials.password}/${channel.stream_id}`,
+      logo: channel.stream_icon || null
+    }));
+
+    return channels;
+  } catch (error) {
     console.error('Error fetching channels:', error);
     throw error;
   }
-
-  return data.map(channel => ({
-    id: channel.id,
-    name: channel.name,
-    number: channel.number || 0,
-    streamUrl: channel.stream_url,
-    logo: channel.logo
-  }));
 };
 
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
@@ -84,20 +100,7 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
 
 export const refreshEPGData = async () => {
   try {
-    // First, delete all existing EPG data
-    const { error: deleteError } = await supabase
-      .from('programs')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all records
-
-    if (deleteError) throw deleteError;
-
-    // Get credentials to fetch new EPG data
-    const { data: credentials } = await supabase
-      .from('stream_credentials')
-      .select('*')
-      .maybeSingle();
-
+    const credentials = await getStoredCredentials();
     if (!credentials) {
       throw new Error('No stream credentials found');
     }
@@ -112,8 +115,17 @@ export const refreshEPGData = async () => {
       }
     });
 
-    if (error) throw error;
-    if (!data.success) throw new Error(data.error || 'Failed to fetch EPG data');
+    if (error || !data.success) {
+      throw new Error('Failed to fetch EPG data');
+    }
+
+    // Update the last refresh timestamp
+    await supabase
+      .from('epg_settings')
+      .upsert({
+        refresh_days: 7,
+        last_refresh: new Date().toISOString()
+      });
 
     toast.success('EPG data refreshed successfully');
     return data;

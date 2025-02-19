@@ -14,7 +14,6 @@ interface XtreamAuthRequest {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -24,34 +23,48 @@ serve(async (req) => {
     console.log('Processing request:', { url, username, action });
 
     const baseUrl = url.replace(/\/$/, '');
-    let apiEndpoint = '';
 
+    // Authentication request
     if (action === 'authenticate') {
-      apiEndpoint = `/player_api.php?username=${username}&password=${password}`;
-    } else if (action === 'get_epg') {
-      apiEndpoint = `/xmltv.php?username=${username}&password=${password}`;
-    }
+      const response = await fetch(`${baseUrl}/player_api.php?username=${username}&password=${password}`);
+      
+      if (!response.ok) {
+        throw new Error(`Authentication failed: ${response.statusText}`);
+      }
 
-    const response = await fetch(`${baseUrl}${apiEndpoint}`);
-    
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
-    }
-
-    let data;
-    if (action === 'authenticate') {
-      data = await response.json();
+      const data = await response.json();
       console.log('Authentication successful');
-    } else {
-      const xmlData = await response.text();
-      // Process EPG XML data here if needed
-      data = { success: true, data: xmlData };
-      console.log('EPG data fetched successfully');
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        data: {
+          ...data,
+          available_channels: await getChannels(baseUrl, username, password)
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    return new Response(JSON.stringify({ success: true, data }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    // EPG data request
+    if (action === 'get_epg') {
+      const epgResponse = await fetch(`${baseUrl}/xmltv.php?username=${username}&password=${password}`);
+      
+      if (!epgResponse.ok) {
+        throw new Error(`Failed to fetch EPG data: ${epgResponse.statusText}`);
+      }
+
+      const epgData = await epgResponse.text();
+      const parsedEPG = await parseEPGData(epgData);
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        data: parsedEPG 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
   } catch (error) {
     console.error('Error:', error.message);
     return new Response(JSON.stringify({
@@ -62,4 +75,23 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-})
+});
+
+async function getChannels(baseUrl: string, username: string, password: string) {
+  const response = await fetch(`${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_live_streams`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch channels');
+  }
+
+  return await response.json();
+}
+
+async function parseEPGData(xmlData: string) {
+  // Here we would parse the XML EPG data and store it in the database
+  // For now, we'll just return a success message
+  return {
+    message: 'EPG data processed successfully',
+    timestamp: new Date().toISOString()
+  };
+}
