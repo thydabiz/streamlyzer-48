@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { getChannels, getCurrentProgram, getProgramSchedule, refreshEPGData } from "@/services/epgService";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
-import type { Channel, EPGProgram } from "@/types/epg";
+import type { Channel } from "@/types/epg";
 
 interface LiveTVProps {
   selectedChannel: Channel | null;
@@ -18,22 +18,11 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [currentPrograms, setCurrentPrograms] = useState<Record<string, EPGProgram | undefined>>({});
-  const [programSchedule, setProgramSchedule] = useState<Record<string, EPGProgram[]>>({});
 
   const loadChannels = async () => {
     try {
       const channelData = await getChannels();
       setChannels(channelData);
-      
-      // Load current programs for all channels
-      const programs = await Promise.all(
-        channelData.map(async (channel) => {
-          const program = await getCurrentProgram(channel.id);
-          return [channel.id, program] as const;
-        })
-      );
-      setCurrentPrograms(Object.fromEntries(programs));
     } catch (error) {
       toast.error("Failed to load channels");
     } finally {
@@ -44,21 +33,6 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   useEffect(() => {
     loadChannels();
   }, []);
-
-  useEffect(() => {
-    if (selectedChannel) {
-      loadProgramSchedule(selectedChannel.id);
-    }
-  }, [selectedChannel]);
-
-  const loadProgramSchedule = async (channelId: string) => {
-    try {
-      const schedule = await getProgramSchedule(channelId);
-      setProgramSchedule(prev => ({ ...prev, [channelId]: schedule }));
-    } catch (error) {
-      console.error('Error loading program schedule:', error);
-    }
-  };
 
   const handleRefreshEPG = async () => {
     setRefreshing(true);
@@ -82,14 +56,11 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   }
 
   const categories = Array.from(
-    new Set(Object.values(currentPrograms)
-      .filter((program): program is EPGProgram => !!program)
-      .map(program => program.category)
-      .filter(Boolean))
+    new Set(channels.map(channel => getCurrentProgram(channel.id)?.category).filter(Boolean))
   );
 
   const renderProgramTimeline = (channelId: string) => {
-    const schedule = programSchedule[channelId] || [];
+    const programSchedule = getProgramSchedule(channelId);
     const now = new Date();
     const timelineStart = new Date(now.setHours(now.getHours() - 1));
     const timelineEnd = new Date(now.setHours(now.getHours() + 4));
@@ -97,7 +68,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     return (
       <div className="relative h-24 bg-gray-800/50 rounded-lg mt-4 overflow-x-auto">
         <div className="absolute inset-0 flex items-stretch">
-          {schedule.map((program) => {
+          {programSchedule.map((program) => {
             const start = new Date(program.startTime);
             const end = new Date(program.endTime);
             const duration = end.getTime() - start.getTime();
@@ -149,7 +120,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
           <h2 className="text-2xl font-semibold mb-4">Now Playing</h2>
           <VideoPlayer 
             url={selectedChannel.streamUrl} 
-            title={`${selectedChannel.name} - ${currentPrograms[selectedChannel.id]?.title || 'No Program Info'}`} 
+            title={`${selectedChannel.name} - ${getCurrentProgram(selectedChannel.id)?.title || 'No Program Info'}`} 
           />
           {renderProgramTimeline(selectedChannel.id)}
         </section>
@@ -174,7 +145,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {channels.map((channel) => {
-            const program = currentPrograms[channel.id];
+            const program = getCurrentProgram(channel.id);
             return (
               <button
                 key={channel.id}
