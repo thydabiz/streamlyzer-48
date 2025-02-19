@@ -139,7 +139,7 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
-            referencedColumns: ["id"]
+            referencedColumns: ["channel_id"]
           },
         ]
       }
