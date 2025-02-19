@@ -27,14 +27,17 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
     if (error) throw new Error(error.message || 'Failed to authenticate with IPTV provider');
     if (!data || !data.success) throw new Error(data?.error || 'Failed to authenticate with IPTV provider');
 
+    // Save the credentials after successful authentication
     await saveStreamCredentials({
       url,
       username: credentials.username,
       password: credentials.password
     });
 
+    console.log('Authentication successful:', data);
     return data.data;
   } catch (error) {
+    console.error('Authentication error:', error);
     toast.error(error.message || 'Failed to authenticate with IPTV provider');
     throw error;
   }
@@ -50,6 +53,7 @@ export const getStoredCredentials = async () => {
     if (error) throw error;
     return data;
   } catch (error) {
+    console.error('Error fetching stored credentials:', error);
     throw error;
   }
 };
@@ -68,8 +72,10 @@ export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
       });
 
     if (error) throw error;
+    console.log('Credentials saved successfully');
     toast.success('Credentials saved successfully');
   } catch (error) {
+    console.error('Error saving credentials:', error);
     toast.error('Failed to save credentials');
     throw error;
   }
@@ -85,6 +91,7 @@ export const getEPGSettings = async () => {
     if (error) throw error;
     return data ?? { refresh_days: 7, last_refresh: null };
   } catch (error) {
+    console.error('Error fetching EPG settings:', error);
     throw error;
   }
 };
@@ -101,11 +108,13 @@ export const saveEPGSettings = async (refreshDays: number) => {
     if (error) throw error;
     toast.success('EPG settings updated');
   } catch (error) {
+    console.error('Error saving EPG settings:', error);
     toast.error('Failed to save EPG settings');
     throw error;
   }
 };
 
+// Function to start monitoring EPG refresh
 export const startEPGRefreshMonitoring = async () => {
   try {
     const settings = await getEPGSettings();
@@ -135,6 +144,7 @@ export const startEPGRefreshMonitoring = async () => {
       }
     }, 60000);
   } catch (error) {
+    console.error('Error starting EPG refresh monitoring:', error);
     throw error;
   }
 };
@@ -152,8 +162,10 @@ export const refreshEPGData = async () => {
         last_refresh: new Date().toISOString()
       });
 
+    console.log('EPG data refreshed');
     toast.success('EPG data refreshed');
   } catch (error) {
+    console.error('Error refreshing EPG data:', error);
     toast.error('Failed to refresh EPG data');
     throw error;
   }
