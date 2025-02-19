@@ -1,112 +1,125 @@
 
-import { EPGProgram, Channel } from '@/types/epg';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import type { EPGProgram, Channel } from '@/types/epg';
 
-// Sample data - replace with actual EPG data source
-const sampleChannels: Channel[] = [
-  {
-    id: '1',
-    name: 'Sample Channel 1',
-    number: 1,
-    streamUrl: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
-  },
-  {
-    id: '2',
-    name: 'Sample Channel 2',
-    number: 2,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-  },
-];
+export const getChannels = async (): Promise<Channel[]> => {
+  const { data, error } = await supabase
+    .from('channels')
+    .select('*')
+    .order('number');
 
-const samplePrograms: EPGProgram[] = [
-  {
-    id: '1',
-    title: 'News Today',
-    description: 'Latest news updates',
-    startTime: new Date().toISOString(),
-    endTime: new Date(Date.now() + 3600000).toISOString(),
-    category: 'News',
-    channel: '1',
-  },
-  {
-    id: '2',
-    title: 'Sports World',
-    description: 'Sports coverage',
-    startTime: new Date().toISOString(),
-    endTime: new Date(Date.now() + 3600000).toISOString(),
-    category: 'Sports',
-    channel: '2',
-  },
-];
+  if (error) {
+    console.error('Error fetching channels:', error);
+    throw error;
+  }
 
-export const getChannels = (): Channel[] => {
-  return sampleChannels;
+  return data.map(channel => ({
+    id: channel.id,
+    name: channel.name,
+    number: channel.number || 0,
+    streamUrl: channel.stream_url,
+    logo: channel.logo
+  }));
 };
 
-export const getPrograms = (filters?: {
-  category?: string;
-  channel?: string;
-  timeRange?: { start: string; end: string };
-  searchQuery?: string;
-}): EPGProgram[] => {
-  let filteredPrograms = [...samplePrograms];
+export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('programs')
+    .select('*')
+    .eq('channel_id', channelId)
+    .lte('start_time', now)
+    .gte('end_time', now)
+    .maybeSingle();
 
-  if (filters?.searchQuery) {
-    const query = filters.searchQuery.toLowerCase();
-    filteredPrograms = filteredPrograms.filter(
-      program => 
-        program.title.toLowerCase().includes(query) ||
-        program.description.toLowerCase().includes(query) ||
-        program.category.toLowerCase().includes(query)
-    );
+  if (error) {
+    console.error('Error fetching current program:', error);
+    return undefined;
   }
 
-  if (filters?.category) {
-    filteredPrograms = filteredPrograms.filter(
-      program => program.category === filters.category
-    );
-  }
-
-  if (filters?.channel) {
-    filteredPrograms = filteredPrograms.filter(
-      program => program.channel === filters.channel
-    );
-  }
-
-  if (filters?.timeRange) {
-    filteredPrograms = filteredPrograms.filter(
-      program =>
-        new Date(program.startTime) >= new Date(filters.timeRange.start) &&
-        new Date(program.endTime) <= new Date(filters.timeRange.end)
-    );
-  }
-
-  return filteredPrograms;
+  return data ? {
+    id: data.id,
+    title: data.title,
+    description: data.description || '',
+    startTime: data.start_time,
+    endTime: data.end_time,
+    category: data.category || 'Uncategorized',
+    channel: data.channel_id,
+    rating: data.rating,
+    thumbnail: data.thumbnail
+  } : undefined;
 };
 
-export const getCurrentProgram = (channelId: string): EPGProgram | undefined => {
+export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[]> => {
   const now = new Date();
-  return samplePrograms.find(
-    program =>
-      program.channel === channelId &&
-      new Date(program.startTime) <= now &&
-      new Date(program.endTime) >= now
-  );
+  const startTime = new Date(now.setHours(now.getHours() - 1)).toISOString();
+  const endTime = new Date(now.setHours(now.getHours() + 4)).toISOString();
+
+  const { data, error } = await supabase
+    .from('programs')
+    .select('*')
+    .eq('channel_id', channelId)
+    .gte('end_time', startTime)
+    .lte('start_time', endTime)
+    .order('start_time');
+
+  if (error) {
+    console.error('Error fetching program schedule:', error);
+    throw error;
+  }
+
+  return data.map(program => ({
+    id: program.id,
+    title: program.title,
+    description: program.description || '',
+    startTime: program.start_time,
+    endTime: program.end_time,
+    category: program.category || 'Uncategorized',
+    channel: program.channel_id,
+    rating: program.rating,
+    thumbnail: program.thumbnail
+  }));
 };
 
-export const getProgramSchedule = (
-  channelId: string,
-  date: Date = new Date()
-): EPGProgram[] => {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+export const refreshEPGData = async () => {
+  try {
+    // First, delete all existing EPG data
+    const { error: deleteError } = await supabase
+      .from('programs')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all records
 
-  return samplePrograms.filter(
-    program =>
-      program.channel === channelId &&
-      new Date(program.startTime) >= startOfDay &&
-      new Date(program.endTime) <= endOfDay
-  );
+    if (deleteError) throw deleteError;
+
+    // Get credentials to fetch new EPG data
+    const { data: credentials } = await supabase
+      .from('stream_credentials')
+      .select('*')
+      .maybeSingle();
+
+    if (!credentials) {
+      throw new Error('No stream credentials found');
+    }
+
+    // Fetch new EPG data using the Edge Function
+    const { data, error } = await supabase.functions.invoke('xtream-auth', {
+      body: {
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password,
+        action: 'get_epg'
+      }
+    });
+
+    if (error) throw error;
+    if (!data.success) throw new Error(data.error || 'Failed to fetch EPG data');
+
+    toast.success('EPG data refreshed successfully');
+    return data;
+  } catch (error) {
+    console.error('Error refreshing EPG data:', error);
+    toast.error('Failed to refresh EPG data');
+    throw error;
+  }
 };

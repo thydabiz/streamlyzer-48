@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
-import { getChannels, getCurrentProgram, getProgramSchedule } from "@/services/epgService";
+import { getChannels, getCurrentProgram, getProgramSchedule, refreshEPGData } from "@/services/epgService";
 import { toast } from "sonner";
+import { RefreshCw } from "lucide-react";
 import type { Channel } from "@/types/epg";
 
 interface LiveTVProps {
@@ -16,21 +17,35 @@ interface LiveTVProps {
 const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryChange }: LiveTVProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadChannels = async () => {
+    try {
+      const channelData = await getChannels();
+      setChannels(channelData);
+    } catch (error) {
+      toast.error("Failed to load channels");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadChannels = async () => {
-      try {
-        const channelData = await getChannels();
-        setChannels(channelData);
-      } catch (error) {
-        toast.error("Failed to load channels");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadChannels();
   }, []);
+
+  const handleRefreshEPG = async () => {
+    setRefreshing(true);
+    try {
+      await refreshEPGData();
+      await loadChannels(); // Reload channels after EPG refresh
+      toast.success("EPG data refreshed successfully");
+    } catch (error) {
+      toast.error("Failed to refresh EPG data");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading channels...</div>;
@@ -87,6 +102,19 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold">Live Channels</h2>
+        <Button
+          variant="outline"
+          onClick={handleRefreshEPG}
+          disabled={refreshing}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing EPG...' : 'Refresh EPG'}
+        </Button>
+      </div>
+
       {selectedChannel && (
         <section>
           <h2 className="text-2xl font-semibold mb-4">Now Playing</h2>
@@ -100,7 +128,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
 
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-semibold">Live Channels</h2>
+          <h2 className="text-2xl font-semibold">All Channels</h2>
           <div className="flex gap-2">
             {categories.map(category => (
               <Button
