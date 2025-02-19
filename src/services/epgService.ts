@@ -32,6 +32,9 @@ export const getChannels = async (): Promise<Channel[]> => {
       logo: channel.stream_icon || null
     }));
 
+    // Store channels in the database
+    await storeChannels(channels);
+
     return channels;
   } catch (error) {
     console.error('Error fetching channels:', error);
@@ -39,32 +42,57 @@ export const getChannels = async (): Promise<Channel[]> => {
   }
 };
 
+const storeChannels = async (channels: Channel[]) => {
+  try {
+    const { error } = await supabase
+      .from('channels')
+      .upsert(
+        channels.map(channel => ({
+          channel_id: channel.id,
+          name: channel.name,
+          number: channel.number,
+          stream_url: channel.streamUrl,
+          logo: channel.logo
+        }))
+      );
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error storing channels:', error);
+  }
+};
+
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
   const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('programs')
-    .select('*')
-    .eq('channel_id', channelId)
-    .lte('start_time', now)
-    .gte('end_time', now)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .eq('channel_id', channelId.toString())
+      .lte('start_time', now)
+      .gte('end_time', now)
+      .maybeSingle();
 
-  if (error) {
-    console.error('Error fetching current program:', error);
+    if (error) {
+      console.error('Error fetching current program:', error);
+      return undefined;
+    }
+
+    return data ? {
+      id: data.id,
+      title: data.title,
+      description: data.description || '',
+      startTime: data.start_time,
+      endTime: data.end_time,
+      category: data.category || 'Uncategorized',
+      channel: data.channel_id,
+      rating: data.rating,
+      thumbnail: data.thumbnail
+    } : undefined;
+  } catch (error) {
+    console.error('Error in getCurrentProgram:', error);
     return undefined;
   }
-
-  return data ? {
-    id: data.id,
-    title: data.title,
-    description: data.description || '',
-    startTime: data.start_time,
-    endTime: data.end_time,
-    category: data.category || 'Uncategorized',
-    channel: data.channel_id,
-    rating: data.rating,
-    thumbnail: data.thumbnail
-  } : undefined;
 };
 
 export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[]> => {
@@ -72,30 +100,35 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
   const startTime = new Date(now.setHours(now.getHours() - 1)).toISOString();
   const endTime = new Date(now.setHours(now.getHours() + 4)).toISOString();
 
-  const { data, error } = await supabase
-    .from('programs')
-    .select('*')
-    .eq('channel_id', channelId)
-    .gte('end_time', startTime)
-    .lte('start_time', endTime)
-    .order('start_time');
+  try {
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .eq('channel_id', channelId.toString())
+      .gte('end_time', startTime)
+      .lte('start_time', endTime)
+      .order('start_time');
 
-  if (error) {
-    console.error('Error fetching program schedule:', error);
-    throw error;
+    if (error) {
+      console.error('Error fetching program schedule:', error);
+      return [];
+    }
+
+    return data.map(program => ({
+      id: program.id,
+      title: program.title,
+      description: program.description || '',
+      startTime: program.start_time,
+      endTime: program.end_time,
+      category: program.category || 'Uncategorized',
+      channel: program.channel_id,
+      rating: program.rating,
+      thumbnail: program.thumbnail
+    }));
+  } catch (error) {
+    console.error('Error in getProgramSchedule:', error);
+    return [];
   }
-
-  return data.map(program => ({
-    id: program.id,
-    title: program.title,
-    description: program.description || '',
-    startTime: program.start_time,
-    endTime: program.end_time,
-    category: program.category || 'Uncategorized',
-    channel: program.channel_id,
-    rating: program.rating,
-    thumbnail: program.thumbnail
-  }));
 };
 
 export const refreshEPGData = async () => {
