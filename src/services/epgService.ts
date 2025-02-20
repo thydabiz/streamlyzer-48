@@ -15,7 +15,7 @@ export const getChannels = async (): Promise<Channel[]> => {
       body: {
         url: credentials.url,
         username: credentials.username,
-        password: credentials.password,
+        password: credentials.password
       }
     });
 
@@ -26,7 +26,7 @@ export const getChannels = async (): Promise<Channel[]> => {
     // Map the API response to our Channel type
     const channels = data.data.available_channels.map((channel: any) => ({
       id: channel.stream_id.toString(),
-      name: channel.name,
+      name: channel.name || 'Unnamed Channel', // Provide default name
       number: channel.num || 0,
       streamUrl: `${credentials.url}/live/${credentials.username}/${credentials.password}/${channel.stream_id}`,
       logo: channel.stream_icon || null
@@ -38,6 +38,7 @@ export const getChannels = async (): Promise<Channel[]> => {
     return channels;
   } catch (error) {
     console.error('Error fetching channels:', error);
+    toast.error('Failed to fetch channels');
     throw error;
   }
 };
@@ -50,15 +51,20 @@ const storeChannels = async (channels: Channel[]) => {
         channels.map(channel => ({
           channel_id: channel.id,
           name: channel.name,
-          number: channel.number,
+          number: channel.number || 0,
           stream_url: channel.streamUrl,
-          logo: channel.logo
-        }))
+          logo: channel.logo || null
+        })),
+        { onConflict: 'channel_id' }
       );
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error storing channels:', error);
+      throw error;
+    }
   } catch (error) {
     console.error('Error storing channels:', error);
+    toast.error('Failed to store channels');
   }
 };
 
@@ -68,7 +74,7 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
     const { data, error } = await supabase
       .from('programs')
       .select('*')
-      .eq('channel_id', channelId.toString())
+      .eq('channel_id', channelId)
       .lte('start_time', now)
       .gte('end_time', now)
       .maybeSingle();
@@ -104,7 +110,7 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
     const { data, error } = await supabase
       .from('programs')
       .select('*')
-      .eq('channel_id', channelId.toString())
+      .eq('channel_id', channelId)
       .gte('end_time', startTime)
       .lte('start_time', endTime)
       .order('start_time');
@@ -138,7 +144,6 @@ export const refreshEPGData = async () => {
       throw new Error('No stream credentials found');
     }
 
-    // Fetch new EPG data using the Edge Function
     const { data, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
         url: credentials.url,
@@ -152,7 +157,6 @@ export const refreshEPGData = async () => {
       throw new Error('Failed to fetch EPG data');
     }
 
-    // Update the last refresh timestamp
     await supabase
       .from('epg_settings')
       .upsert({
