@@ -2,9 +2,17 @@
 import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getChannels, getCurrentProgram, getProgramSchedule, refreshEPGData } from "@/services/epgService";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
+import StreamCredentialsManager from "./StreamCredentialsManager";
 import type { Channel, EPGProgram } from "@/types/epg";
 
 interface LiveTVProps {
@@ -20,6 +28,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   const [refreshing, setRefreshing] = useState(false);
   const [currentPrograms, setCurrentPrograms] = useState<Record<string, EPGProgram | undefined>>({});
   const [programSchedule, setProgramSchedule] = useState<Record<string, EPGProgram[]>>({});
+  const [categoryType, setCategoryType] = useState<string>("all");
 
   const loadChannels = async () => {
     try {
@@ -64,7 +73,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     setRefreshing(true);
     try {
       await refreshEPGData();
-      await loadChannels(); // Reload channels after EPG refresh
+      await loadChannels();
       toast.success("EPG data refreshed successfully");
     } catch (error) {
       toast.error("Failed to refresh EPG data");
@@ -87,6 +96,20 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       .map(program => program.category)
       .filter(Boolean))
   );
+
+  const channelTypes = ["all", "sports", "news", "movies", "kids", "24/7", "ppv", "entertainment"];
+
+  const filteredChannels = channels.filter(channel => {
+    const program = currentPrograms[channel.id];
+    if (!program) return true;
+    
+    if (categoryFilter && program.category !== categoryFilter) return false;
+    if (categoryType !== "all") {
+      const categoryMatch = program.category?.toLowerCase().includes(categoryType.toLowerCase());
+      if (!categoryMatch) return false;
+    }
+    return true;
+  });
 
   const renderProgramTimeline = (channelId: string) => {
     const schedule = programSchedule[channelId] || [];
@@ -121,7 +144,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
           <div 
             className="absolute top-0 bottom-0 w-0.5 bg-red-500"
             style={{
-              left: `${((now.getTime() - timelineStart.getTime()) / (timelineEnd.getTime() - timelineStart.getTime())) * 100}%`
+              left: `${((new Date().getTime() - timelineStart.getTime()) / (timelineEnd.getTime() - timelineStart.getTime())) * 100}%`
             }}
           />
         </div>
@@ -133,15 +156,18 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Live Channels</h2>
-        <Button
-          variant="outline"
-          onClick={handleRefreshEPG}
-          disabled={refreshing}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing EPG...' : 'Refresh EPG'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <StreamCredentialsManager />
+          <Button
+            variant="outline"
+            onClick={handleRefreshEPG}
+            disabled={refreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing EPG...' : 'Refresh EPG'}
+          </Button>
+        </div>
       </div>
 
       {selectedChannel && (
@@ -158,22 +184,36 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-semibold">All Channels</h2>
-          <div className="flex gap-2">
-            {categories.map(category => (
-              <Button
-                key={category}
-                variant={categoryFilter === category ? "default" : "outline"}
-                onClick={() => onCategoryChange(
-                  categoryFilter === category ? undefined : category
-                )}
-              >
-                {category}
-              </Button>
-            ))}
+          <div className="flex gap-4">
+            <Select value={categoryType} onValueChange={setCategoryType}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                {channelTypes.map(type => (
+                  <SelectItem key={type} value={type}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              {categories.map(category => (
+                <Button
+                  key={category}
+                  variant={categoryFilter === category ? "default" : "outline"}
+                  onClick={() => onCategoryChange(
+                    categoryFilter === category ? undefined : category
+                  )}
+                >
+                  {category}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {channels.map((channel) => {
+          {filteredChannels.map((channel) => {
             const program = currentPrograms[channel.id];
             return (
               <button
