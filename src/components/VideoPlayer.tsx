@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import ReactPlayer from 'react-player';
 import Hls from 'hls.js';
-import { useToast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 
 interface VideoPlayerProps {
   url: string;
@@ -11,7 +11,6 @@ interface VideoPlayerProps {
 
 const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
   const [isReady, setIsReady] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     if (url && !Hls.isSupported()) {
@@ -22,7 +21,7 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
         variant: "destructive",
       });
     }
-  }, [url, toast]);
+  }, [url]);
 
   const handleReady = () => {
     console.log("Player ready");
@@ -33,7 +32,7 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
     console.error("Playback error:", error);
     toast({
       title: "Playback Error",
-      description: "Failed to load the video stream. Please try again later.",
+      description: "Failed to load the video stream. Please try refreshing the page.",
       variant: "destructive",
     });
   };
@@ -54,37 +53,29 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
           controls
           onReady={handleReady}
           onError={handleError}
-          playsinline // Important for mobile and TV devices
+          playsinline
           config={{
             file: {
               forceHLS: true,
               hlsOptions: {
-                debug: false, // Disable debug mode in production
                 enableWorker: true,
-                lowLatencyMode: false, // Disable low latency mode for better buffering
-                backBufferLength: 90, // Increase buffer length for smoother playback
+                debug: false,
+                fragLoadingTimeOut: 20000,
+                manifestLoadingTimeOut: 20000,
+                levelLoadingTimeOut: 20000,
+                fragLoadingMaxRetry: 3,
+                manifestLoadingMaxRetry: 3,
+                levelLoadingMaxRetry: 3,
                 maxBufferLength: 30,
                 maxMaxBufferLength: 600,
-                maxBufferSize: 60 * 1000 * 1000, // 60MB buffer size
-                maxBufferHole: 0.5,
-                highBufferWatchdogPeriod: 2,
-                nudgeOffset: 0.2,
-                startLevel: -1, // Auto quality selection
+                maxBufferSize: 60 * 1000 * 1000,
+                startLevel: -1,
                 autoStartLoad: true,
-                abrEwmaDefaultEstimate: 500000, // 500kbps default bandwidth estimate
-                abrBandWidthFactor: 0.95,
-                abrBandWidthUpFactor: 0.7,
-                abrMaxWithRealBitrate: true,
                 liveSyncDurationCount: 3,
-                liveMaxLatencyDurationCount: 10,
-                progressive: true, // Enable progressive download
-                testBandwidth: true,
+                liveMaxLatencyDurationCount: 10
               },
             },
           }}
-          playbackRate={1.0}
-          volume={1}
-          muted={false}
           style={{ 
             objectFit: 'contain',
             background: '#000',
