@@ -15,11 +15,7 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
   useEffect(() => {
     if (url && !Hls.isSupported()) {
       console.log("HLS not supported in this browser");
-      toast({
-        title: "Playback Error",
-        description: "Your browser doesn't support HLS playback.",
-        variant: "destructive",
-      });
+      toast.error("Your browser doesn't support HLS playback.");
     }
   }, [url]);
 
@@ -30,11 +26,7 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
 
   const handleError = (error: any) => {
     console.error("Playback error:", error);
-    toast({
-      title: "Playback Error",
-      description: "Failed to load the video stream. Please try refreshing the page.",
-      variant: "destructive",
-    });
+    toast.error("Failed to load the video stream. Please try refreshing the page.");
   };
 
   return (
