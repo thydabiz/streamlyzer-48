@@ -26,7 +26,7 @@ export const getChannels = async (): Promise<Channel[]> => {
     // Map the API response to our Channel type
     const channels = data.data.available_channels.map((channel: any) => ({
       id: channel.stream_id.toString(),
-      name: channel.name || 'Unnamed Channel', // Provide default name
+      name: channel.name || 'Unnamed Channel',
       number: channel.num || 0,
       streamUrl: `${credentials.url}/live/${credentials.username}/${credentials.password}/${channel.stream_id}`,
       logo: channel.stream_icon || null
@@ -137,6 +137,66 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
   }
 };
 
+export const getMovies = async (): Promise<EPGProgram[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .eq('category', 'Movie')
+      .order('start_time', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching movies:', error);
+      return [];
+    }
+
+    return data.map(program => ({
+      id: program.id,
+      title: program.title,
+      description: program.description || '',
+      startTime: program.start_time,
+      endTime: program.end_time,
+      category: program.category || 'Movie',
+      channel: program.channel_id,
+      rating: program.rating,
+      thumbnail: program.thumbnail
+    }));
+  } catch (error) {
+    console.error('Error in getMovies:', error);
+    return [];
+  }
+};
+
+export const getShows = async (): Promise<EPGProgram[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .not('category', 'eq', 'Movie')
+      .order('start_time', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching shows:', error);
+      return [];
+    }
+
+    return data.map(program => ({
+      id: program.id,
+      title: program.title,
+      description: program.description || '',
+      startTime: program.start_time,
+      endTime: program.end_time,
+      category: program.category || 'TV Show',
+      channel: program.channel_id,
+      rating: program.rating,
+      thumbnail: program.thumbnail
+    }));
+  } catch (error) {
+    console.error('Error in getShows:', error);
+    return [];
+  }
+};
+
 export const refreshEPGData = async () => {
   try {
     const credentials = await getStoredCredentials();
@@ -155,6 +215,31 @@ export const refreshEPGData = async () => {
 
     if (error || !data.success) {
       throw new Error('Failed to fetch EPG data');
+    }
+
+    // Store EPG data in the programs table
+    if (data.data && Array.isArray(data.data.programs)) {
+      const programs = data.data.programs.map((program: any) => ({
+        title: program.title,
+        description: program.description,
+        start_time: program.start_time,
+        end_time: program.end_time,
+        channel_id: program.channel_id.toString(),
+        category: program.category || 'Uncategorized',
+        rating: program.rating,
+        thumbnail: program.thumbnail
+      }));
+
+      const { error: insertError } = await supabase
+        .from('programs')
+        .upsert(programs, {
+          onConflict: 'channel_id,start_time'
+        });
+
+      if (insertError) {
+        console.error('Error storing programs:', insertError);
+        throw insertError;
+      }
     }
 
     await supabase
