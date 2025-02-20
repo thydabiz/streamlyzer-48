@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { EPGProgram, Channel } from '@/types/epg';
@@ -23,7 +22,6 @@ export const getChannels = async (): Promise<Channel[]> => {
       throw new Error('Failed to fetch channels');
     }
 
-    // Map the API response to our Channel type
     const channels = data.data.available_channels.map((channel: any) => ({
       id: channel.stream_id.toString(),
       name: channel.name || 'Unnamed Channel',
@@ -32,7 +30,6 @@ export const getChannels = async (): Promise<Channel[]> => {
       logo: channel.stream_icon || null
     }));
 
-    // Store channels in the database
     await storeChannels(channels);
 
     return channels;
@@ -138,6 +135,7 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
 };
 
 export const getMovies = async (): Promise<EPGProgram[]> => {
+  console.log('Fetching movies...');
   try {
     const { data, error } = await supabase
       .from('programs')
@@ -147,9 +145,10 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
 
     if (error) {
       console.error('Error fetching movies:', error);
-      return [];
+      throw error;
     }
 
+    console.log('Fetched movies:', data);
     return data.map(program => ({
       id: program.id,
       title: program.title,
@@ -163,11 +162,12 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
     }));
   } catch (error) {
     console.error('Error in getMovies:', error);
-    return [];
+    throw error;
   }
 };
 
 export const getShows = async (): Promise<EPGProgram[]> => {
+  console.log('Fetching shows...');
   try {
     const { data, error } = await supabase
       .from('programs')
@@ -177,9 +177,10 @@ export const getShows = async (): Promise<EPGProgram[]> => {
 
     if (error) {
       console.error('Error fetching shows:', error);
-      return [];
+      throw error;
     }
 
+    console.log('Fetched shows:', data);
     return data.map(program => ({
       id: program.id,
       title: program.title,
@@ -193,11 +194,12 @@ export const getShows = async (): Promise<EPGProgram[]> => {
     }));
   } catch (error) {
     console.error('Error in getShows:', error);
-    return [];
+    throw error;
   }
 };
 
 export const refreshEPGData = async () => {
+  console.log('Starting EPG refresh...');
   try {
     const credentials = await getStoredCredentials();
     if (!credentials) {
@@ -214,11 +216,13 @@ export const refreshEPGData = async () => {
     });
 
     if (error || !data.success) {
+      console.error('Failed to fetch EPG data:', error || data.error);
       throw new Error('Failed to fetch EPG data');
     }
 
     // Store EPG data in the programs table
     if (data.data && Array.isArray(data.data.programs)) {
+      console.log('Received programs data:', data.data.programs.length, 'items');
       const programs = data.data.programs.map((program: any) => ({
         title: program.title,
         description: program.description,
@@ -249,6 +253,7 @@ export const refreshEPGData = async () => {
         last_refresh: new Date().toISOString()
       });
 
+    console.log('EPG refresh completed successfully');
     toast.success('EPG data refreshed successfully');
     return data;
   } catch (error) {
