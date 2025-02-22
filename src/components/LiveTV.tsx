@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { getChannels, getCurrentProgram, getProgramSchedule, refreshEPGData } fr
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import StreamCredentialsManager from "./StreamCredentialsManager";
-import EPGSettingsDialog from "./EPGSettingsDialog";
+import { EPGSettingsDialog } from "./EPGSettingsDialog";
 import type { Channel, EPGProgram } from "@/types/epg";
 
 interface LiveTVProps {
