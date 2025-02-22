@@ -1,97 +1,136 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface XtreamAuthRequest {
-  url: string;
-  username: string;
-  password: string;
-  action?: 'authenticate' | 'get_epg';
+interface StreamResponse {
+  user_info: {
+    username: string;
+    password: string;
+    message: string;
+    auth: number;
+    status: string;
+    exp_date: string;
+    is_trial: string;
+    active_cons: string;
+    created_at: string;
+    max_connections: string;
+    allowed_output_formats: string[];
+  };
+  server_info: {
+    url: string;
+    port: string;
+    https_port: string;
+    server_protocol: string;
+  };
+  available_channels: any[];
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { url, username, password, action = 'authenticate' } = await req.json() as XtreamAuthRequest;
-    console.log('Processing request:', { url, username, action });
+    const { url, username, password, action } = await req.json()
+    console.log('Received request:', { url, username, action })
 
-    const baseUrl = url.replace(/\/$/, '');
-
-    // Authentication request
-    if (action === 'authenticate') {
-      const response = await fetch(`${baseUrl}/player_api.php?username=${username}&password=${password}`);
-      
-      if (!response.ok) {
-        throw new Error(`Authentication failed: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Authentication successful');
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        data: {
-          ...data,
-          available_channels: await getChannels(baseUrl, username, password)
-        }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!url || !username || !password) {
+      throw new Error('Missing required parameters')
     }
 
-    // EPG data request
+    // Create authentication URL
+    const authUrl = `${url}/player_api.php?username=${username}&password=${password}`
+    console.log('Authenticating with:', authUrl)
+
+    // Fetch authentication data
+    const authResponse = await fetch(authUrl)
+    if (!authResponse.ok) {
+      throw new Error(`Authentication failed: ${authResponse.statusText}`)
+    }
+
+    const authData: StreamResponse = await authResponse.json()
+    console.log('Authentication successful')
+
     if (action === 'get_epg') {
-      const epgResponse = await fetch(`${baseUrl}/xmltv.php?username=${username}&password=${password}`);
+      // Fetch EPG data for each channel
+      console.log('Fetching EPG data for channels...')
+      const programs = []
+
+      // Get current date in YYYY-MM-DD format
+      const today = new Date()
+      const dateStr = today.toISOString().split('T')[0]
+
+      // Only process the first 10 channels for testing
+      const channels = authData.available_channels.slice(0, 10)
       
-      if (!epgResponse.ok) {
-        throw new Error(`Failed to fetch EPG data: ${epgResponse.statusText}`);
+      for (const channel of channels) {
+        const epgUrl = `${url}/player_api.php?username=${username}&password=${password}&action=get_simple_data_table&stream_id=${channel.stream_id}`
+        console.log(`Fetching EPG for channel ${channel.stream_id}`)
+        
+        try {
+          const epgResponse = await fetch(epgUrl)
+          if (epgResponse.ok) {
+            const epgData = await epgResponse.json()
+            if (Array.isArray(epgData)) {
+              // Map EPG data to our program format
+              const channelPrograms = epgData.map((program: any) => ({
+                title: program.title || 'Unknown Program',
+                description: program.description || '',
+                start_time: new Date(program.start_timestamp * 1000).toISOString(),
+                end_time: new Date(program.stop_timestamp * 1000).toISOString(),
+                channel_id: channel.stream_id.toString(),
+                category: program.category || 'Uncategorized',
+                rating: null,
+                thumbnail: program.image_path || null
+              }))
+              programs.push(...channelPrograms)
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching EPG for channel ${channel.stream_id}:`, error)
+          // Continue with other channels even if one fails
+          continue
+        }
       }
 
-      const epgData = await epgResponse.text();
-      const parsedEPG = await parseEPGData(epgData);
+      console.log(`Total programs fetched: ${programs.length}`)
 
-      return new Response(JSON.stringify({ 
-        success: true, 
-        data: parsedEPG 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Return both auth data and EPG data
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            ...authData,
+            programs
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
+
+    // Return just auth data for normal authentication
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: authData
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
 
   } catch (error) {
-    console.error('Error:', error.message);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message,
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('Error:', error)
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    )
   }
-});
-
-async function getChannels(baseUrl: string, username: string, password: string) {
-  const response = await fetch(`${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_live_streams`);
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch channels');
-  }
-
-  return await response.json();
-}
-
-async function parseEPGData(xmlData: string) {
-  // Here we would parse the XML EPG data and store it in the database
-  // For now, we'll just return a success message
-  return {
-    message: 'EPG data processed successfully',
-    timestamp: new Date().toISOString()
-  };
-}
+})
