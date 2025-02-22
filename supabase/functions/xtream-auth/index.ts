@@ -7,29 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface StreamResponse {
-  user_info: {
-    username: string;
-    password: string;
-    message: string;
-    auth: number;
-    status: string;
-    exp_date: string;
-    is_trial: string;
-    active_cons: string;
-    created_at: string;
-    max_connections: string;
-    allowed_output_formats: string[];
-  };
-  server_info: {
-    url: string;
-    port: string;
-    https_port: string;
-    server_protocol: string;
-  };
-  available_channels: any[];
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -41,7 +18,13 @@ serve(async (req) => {
     console.log('Received request:', { url, username, action })
 
     if (!url || !username || !password) {
-      throw new Error('Missing required parameters')
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing required parameters'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
     }
 
     // Create authentication URL
@@ -51,62 +34,85 @@ serve(async (req) => {
     // Fetch authentication data
     const authResponse = await fetch(authUrl)
     if (!authResponse.ok) {
-      throw new Error(`Authentication failed: ${authResponse.statusText}`)
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Authentication failed: ${authResponse.statusText}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: authResponse.status }
+      )
     }
 
-    const authData: StreamResponse = await authResponse.json()
-    console.log('Authentication successful')
+    const authData = await authResponse.json()
+    console.log('Authentication response received')
+
+    // Validate the auth response structure
+    if (!authData || !Array.isArray(authData?.available_channels)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid response format from provider'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
 
     if (action === 'get_epg') {
-      // Fetch EPG data for each channel
       console.log('Fetching EPG data for channels...')
       const programs = []
-
-      // Get current date in YYYY-MM-DD format
-      const today = new Date()
-      const dateStr = today.toISOString().split('T')[0]
-
-      // Only process the first 10 channels for testing
       const channels = authData.available_channels.slice(0, 10)
-      
+
       for (const channel of channels) {
+        if (!channel.stream_id) {
+          console.log('Skipping channel without stream_id:', channel)
+          continue
+        }
+
         const epgUrl = `${url}/player_api.php?username=${username}&password=${password}&action=get_simple_data_table&stream_id=${channel.stream_id}`
         console.log(`Fetching EPG for channel ${channel.stream_id}`)
         
         try {
           const epgResponse = await fetch(epgUrl)
-          if (epgResponse.ok) {
-            const epgData = await epgResponse.json()
-            if (Array.isArray(epgData)) {
-              // Map EPG data to our program format
-              const channelPrograms = epgData.map((program: any) => ({
-                title: program.title || 'Unknown Program',
-                description: program.description || '',
-                start_time: new Date(program.start_timestamp * 1000).toISOString(),
-                end_time: new Date(program.stop_timestamp * 1000).toISOString(),
-                channel_id: channel.stream_id.toString(),
-                category: program.category || 'Uncategorized',
-                rating: null,
-                thumbnail: program.image_path || null
-              }))
-              programs.push(...channelPrograms)
-            }
+          if (!epgResponse.ok) {
+            console.error(`Failed to fetch EPG for channel ${channel.stream_id}:`, epgResponse.statusText)
+            continue
           }
+
+          const epgData = await epgResponse.json()
+          if (!Array.isArray(epgData)) {
+            console.error(`Invalid EPG data format for channel ${channel.stream_id}`)
+            continue
+          }
+
+          const channelPrograms = epgData.map((program: any) => ({
+            title: program.title || 'Unknown Program',
+            description: program.description || '',
+            start_time: new Date(program.start_timestamp * 1000).toISOString(),
+            end_time: new Date(program.stop_timestamp * 1000).toISOString(),
+            channel_id: channel.stream_id.toString(),
+            category: program.category || 'Uncategorized',
+            rating: null,
+            thumbnail: program.image_path || null
+          })).filter(program => 
+            program.title && 
+            !isNaN(new Date(program.start_time).getTime()) && 
+            !isNaN(new Date(program.end_time).getTime())
+          )
+
+          programs.push(...channelPrograms)
+          console.log(`Added ${channelPrograms.length} programs for channel ${channel.stream_id}`)
         } catch (error) {
-          console.error(`Error fetching EPG for channel ${channel.stream_id}:`, error)
-          // Continue with other channels even if one fails
+          console.error(`Error processing EPG for channel ${channel.stream_id}:`, error)
           continue
         }
       }
 
-      console.log(`Total programs fetched: ${programs.length}`)
-
-      // Return both auth data and EPG data
+      console.log(`Total programs processed: ${programs.length}`)
       return new Response(
         JSON.stringify({
           success: true,
           data: {
-            ...authData,
+            available_channels: authData.available_channels,
             programs
           }
         }),
@@ -114,23 +120,24 @@ serve(async (req) => {
       )
     }
 
-    // Return just auth data for normal authentication
     return new Response(
       JSON.stringify({
         success: true,
-        data: authData
+        data: {
+          available_channels: authData.available_channels
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in edge function:', error)
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }
 })
