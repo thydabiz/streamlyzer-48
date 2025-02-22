@@ -81,17 +81,7 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
       return undefined;
     }
 
-    return data ? {
-      id: data.id,
-      title: data.title,
-      description: data.description || '',
-      startTime: data.start_time,
-      endTime: data.end_time,
-      category: data.category || 'Uncategorized',
-      channel: data.channel_id,
-      rating: data.rating,
-      thumbnail: data.thumbnail
-    } : undefined;
+    return data ? mapProgramData(data) : undefined;
   } catch (error) {
     console.error('Error in getCurrentProgram:', error);
     return undefined;
@@ -117,17 +107,7 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
       return [];
     }
 
-    return data.map(program => ({
-      id: program.id,
-      title: program.title,
-      description: program.description || '',
-      startTime: program.start_time,
-      endTime: program.end_time,
-      category: program.category || 'Uncategorized',
-      channel: program.channel_id,
-      rating: program.rating,
-      thumbnail: program.thumbnail
-    }));
+    return data.map(mapProgramData);
   } catch (error) {
     console.error('Error in getProgramSchedule:', error);
     return [];
@@ -140,7 +120,7 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
     const { data, error } = await supabase
       .from('programs')
       .select('*')
-      .eq('category', 'Movie')
+      .ilike('category', '%movie%')
       .order('start_time', { ascending: false });
 
     if (error) {
@@ -148,18 +128,9 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
       throw error;
     }
 
-    console.log('Fetched movies:', data);
-    return data.map(program => ({
-      id: program.id,
-      title: program.title,
-      description: program.description || '',
-      startTime: program.start_time,
-      endTime: program.end_time,
-      category: program.category || 'Movie',
-      channel: program.channel_id,
-      rating: program.rating,
-      thumbnail: program.thumbnail
-    }));
+    const movies = data.map(mapProgramData);
+    console.log('Fetched movies:', movies.length);
+    return movies;
   } catch (error) {
     console.error('Error in getMovies:', error);
     throw error;
@@ -172,7 +143,7 @@ export const getShows = async (): Promise<EPGProgram[]> => {
     const { data, error } = await supabase
       .from('programs')
       .select('*')
-      .not('category', 'eq', 'Movie')
+      .not('category', 'ilike', '%movie%')
       .order('start_time', { ascending: false });
 
     if (error) {
@@ -180,23 +151,26 @@ export const getShows = async (): Promise<EPGProgram[]> => {
       throw error;
     }
 
-    console.log('Fetched shows:', data);
-    return data.map(program => ({
-      id: program.id,
-      title: program.title,
-      description: program.description || '',
-      startTime: program.start_time,
-      endTime: program.end_time,
-      category: program.category || 'TV Show',
-      channel: program.channel_id,
-      rating: program.rating,
-      thumbnail: program.thumbnail
-    }));
+    const shows = data.map(mapProgramData);
+    console.log('Fetched shows:', shows.length);
+    return shows;
   } catch (error) {
     console.error('Error in getShows:', error);
     throw error;
   }
 };
+
+const mapProgramData = (program: any): EPGProgram => ({
+  id: program.id,
+  title: program.title,
+  description: program.description || '',
+  startTime: program.start_time,
+  endTime: program.end_time,
+  category: program.category || 'Uncategorized',
+  channel: program.channel_id,
+  rating: program.rating,
+  thumbnail: program.thumbnail
+});
 
 export const refreshEPGData = async () => {
   console.log('Starting EPG refresh...');
@@ -206,7 +180,7 @@ export const refreshEPGData = async () => {
       throw new Error('No stream credentials found');
     }
 
-    const { data, error } = await supabase.functions.invoke('xtream-auth', {
+    const { data: epgData, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
         url: credentials.url,
         username: credentials.username,
@@ -215,47 +189,62 @@ export const refreshEPGData = async () => {
       }
     });
 
-    if (error || !data.success) {
-      console.error('Failed to fetch EPG data:', error || data.error);
+    if (error || !epgData.success) {
+      console.error('Failed to fetch EPG data:', error || epgData.error);
       throw new Error('Failed to fetch EPG data');
     }
 
     // Store EPG data in the programs table
-    if (data.data && Array.isArray(data.data.programs)) {
-      console.log('Received programs data:', data.data.programs.length, 'items');
-      const programs = data.data.programs.map((program: any) => ({
-        title: program.title,
-        description: program.description,
-        start_time: program.start_time,
-        end_time: program.end_time,
-        channel_id: program.channel_id.toString(),
-        category: program.category || 'Uncategorized',
-        rating: program.rating,
-        thumbnail: program.thumbnail
-      }));
+    if (epgData.data && Array.isArray(epgData.data.programs)) {
+      console.log('Processing', epgData.data.programs.length, 'programs');
+      
+      // Process programs in smaller batches to avoid overwhelming the database
+      const batchSize = 100;
+      const programs = epgData.data.programs;
+      
+      for (let i = 0; i < programs.length; i += batchSize) {
+        const batch = programs.slice(i, i + batchSize).map((program: any) => ({
+          title: program.title,
+          description: program.description,
+          start_time: program.start_time,
+          end_time: program.end_time,
+          channel_id: program.channel_id.toString(),
+          category: program.category || 'Uncategorized',
+          rating: program.rating,
+          thumbnail: program.thumbnail
+        }));
 
-      const { error: insertError } = await supabase
-        .from('programs')
-        .upsert(programs, {
-          onConflict: 'channel_id,start_time'
-        });
+        const { error: insertError } = await supabase
+          .from('programs')
+          .upsert(batch, {
+            onConflict: 'channel_id,start_time,title',
+            ignoreDuplicates: false
+          });
 
-      if (insertError) {
-        console.error('Error storing programs:', insertError);
-        throw insertError;
+        if (insertError) {
+          console.error('Error storing programs batch:', insertError);
+          throw insertError;
+        }
+        
+        console.log(`Processed batch ${i / batchSize + 1} of ${Math.ceil(programs.length / batchSize)}`);
       }
     }
 
-    await supabase
+    const { error: settingsError } = await supabase
       .from('epg_settings')
       .upsert({
         refresh_days: 7,
         last_refresh: new Date().toISOString()
       });
 
+    if (settingsError) {
+      console.error('Error updating EPG settings:', settingsError);
+      throw settingsError;
+    }
+
     console.log('EPG refresh completed successfully');
     toast.success('EPG data refreshed successfully');
-    return data;
+    return epgData;
   } catch (error) {
     console.error('Error refreshing EPG data:', error);
     toast.error('Failed to refresh EPG data');
