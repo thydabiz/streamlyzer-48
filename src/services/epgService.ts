@@ -1,15 +1,20 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { EPGProgram, Channel } from '@/types/epg';
 import { getStoredCredentials } from './iptvService';
 
 export const getChannels = async (): Promise<Channel[]> => {
+  console.log('Fetching channels...');
   try {
     const credentials = await getStoredCredentials();
     if (!credentials) {
-      throw new Error('No stream credentials found');
+      console.error('No stream credentials found');
+      toast.error('No stream credentials found');
+      return [];
     }
 
+    console.log('Authenticating with Xtream provider...');
     const { data, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
         url: credentials.url,
@@ -18,10 +23,19 @@ export const getChannels = async (): Promise<Channel[]> => {
       }
     });
 
-    if (error || !data.success) {
-      throw new Error('Failed to fetch channels');
+    if (error) {
+      console.error('Error fetching channels:', error);
+      toast.error('Failed to fetch channels');
+      return [];
     }
 
+    if (!data.success || !data.data?.available_channels) {
+      console.error('Invalid channel data received:', data);
+      toast.error('Failed to fetch channels: Invalid data received');
+      return [];
+    }
+
+    console.log(`Processing ${data.data.available_channels.length} channels...`);
     const channels = data.data.available_channels.map((channel: any) => ({
       id: channel.stream_id.toString(),
       name: channel.name || 'Unnamed Channel',
@@ -31,16 +45,17 @@ export const getChannels = async (): Promise<Channel[]> => {
     }));
 
     await storeChannels(channels);
-
+    console.log(`Successfully processed ${channels.length} channels`);
     return channels;
   } catch (error) {
-    console.error('Error fetching channels:', error);
+    console.error('Error in getChannels:', error);
     toast.error('Failed to fetch channels');
-    throw error;
+    return [];
   }
 };
 
 const storeChannels = async (channels: Channel[]) => {
+  console.log('Storing channels in database...');
   try {
     const { error } = await supabase
       .from('channels')
@@ -59,13 +74,15 @@ const storeChannels = async (channels: Channel[]) => {
       console.error('Error storing channels:', error);
       throw error;
     }
+    console.log('Channels stored successfully');
   } catch (error) {
-    console.error('Error storing channels:', error);
+    console.error('Error in storeChannels:', error);
     toast.error('Failed to store channels');
   }
 };
 
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
+  console.log(`Fetching current program for channel ${channelId}...`);
   const now = new Date().toISOString();
   try {
     const { data, error } = await supabase
@@ -81,7 +98,13 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
       return undefined;
     }
 
-    return data ? mapProgramData(data) : undefined;
+    if (!data) {
+      console.log(`No current program found for channel ${channelId}`);
+      return undefined;
+    }
+
+    console.log(`Found current program for channel ${channelId}:`, data.title);
+    return mapProgramData(data);
   } catch (error) {
     console.error('Error in getCurrentProgram:', error);
     return undefined;
@@ -89,6 +112,7 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
 };
 
 export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[]> => {
+  console.log(`Fetching program schedule for channel ${channelId}...`);
   const now = new Date();
   const startTime = new Date(now.setHours(now.getHours() - 1)).toISOString();
   const endTime = new Date(now.setHours(now.getHours() + 4)).toISOString();
@@ -107,6 +131,7 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
       return [];
     }
 
+    console.log(`Found ${data.length} programs in schedule for channel ${channelId}`);
     return data.map(mapProgramData);
   } catch (error) {
     console.error('Error in getProgramSchedule:', error);
@@ -125,15 +150,14 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
 
     if (error) {
       console.error('Error fetching movies:', error);
-      throw error;
+      return [];
     }
 
-    const movies = data.map(mapProgramData);
-    console.log('Fetched movies:', movies.length);
-    return movies;
+    console.log(`Found ${data.length} movies`);
+    return data.map(mapProgramData);
   } catch (error) {
     console.error('Error in getMovies:', error);
-    throw error;
+    return [];
   }
 };
 
@@ -148,15 +172,14 @@ export const getShows = async (): Promise<EPGProgram[]> => {
 
     if (error) {
       console.error('Error fetching shows:', error);
-      throw error;
+      return [];
     }
 
-    const shows = data.map(mapProgramData);
-    console.log('Fetched shows:', shows.length);
-    return shows;
+    console.log(`Found ${data.length} shows`);
+    return data.map(mapProgramData);
   } catch (error) {
     console.error('Error in getShows:', error);
-    throw error;
+    return [];
   }
 };
 
@@ -177,9 +200,11 @@ export const refreshEPGData = async () => {
   try {
     const credentials = await getStoredCredentials();
     if (!credentials) {
+      console.error('No stream credentials found');
       throw new Error('No stream credentials found');
     }
 
+    console.log('Fetching EPG data from provider...');
     const { data: epgData, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
         url: credentials.url,
@@ -201,6 +226,7 @@ export const refreshEPGData = async () => {
       // Process programs in smaller batches to avoid overwhelming the database
       const batchSize = 100;
       const programs = epgData.data.programs;
+      let processedCount = 0;
       
       for (let i = 0; i < programs.length; i += batchSize) {
         const batch = programs.slice(i, i + batchSize).map((program: any) => ({
@@ -217,8 +243,7 @@ export const refreshEPGData = async () => {
         const { error: insertError } = await supabase
           .from('programs')
           .upsert(batch, {
-            onConflict: 'channel_id,start_time,title',
-            ignoreDuplicates: false
+            onConflict: 'channel_id,start_time,title'
           });
 
         if (insertError) {
@@ -226,7 +251,8 @@ export const refreshEPGData = async () => {
           throw insertError;
         }
         
-        console.log(`Processed batch ${i / batchSize + 1} of ${Math.ceil(programs.length / batchSize)}`);
+        processedCount += batch.length;
+        console.log(`Processed ${processedCount} of ${programs.length} programs`);
       }
     }
 
@@ -244,7 +270,7 @@ export const refreshEPGData = async () => {
 
     console.log('EPG refresh completed successfully');
     toast.success('EPG data refreshed successfully');
-    return epgData;
+    return true;
   } catch (error) {
     console.error('Error refreshing EPG data:', error);
     toast.error('Failed to refresh EPG data');
