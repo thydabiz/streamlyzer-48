@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import { getChannels, getCurrentProgram, getProgramSchedule, refreshEPGData } fr
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import StreamCredentialsManager from "./StreamCredentialsManager";
+import EPGSettingsDialog from "./EPGSettingsDialog";
 import type { Channel, EPGProgram } from "@/types/epg";
 
 interface LiveTVProps {
@@ -80,6 +80,10 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handleRefreshComplete = async () => {
+    await loadChannels();
   };
 
   if (loading) {
@@ -158,15 +162,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
         <h2 className="text-2xl font-semibold">Live Channels</h2>
         <div className="flex items-center gap-2">
           <StreamCredentialsManager />
-          <Button
-            variant="outline"
-            onClick={handleRefreshEPG}
-            disabled={refreshing}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Refreshing EPG...' : 'Refresh EPG'}
-          </Button>
+          <EPGSettingsDialog onRefreshComplete={handleRefreshComplete} />
         </div>
       </div>
 

@@ -11,13 +11,15 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { useToast } from '@/components/ui/use-toast';
+import { Settings, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import { getEPGSettings, saveEPGSettings } from '@/services/iptvService';
+import { refreshEPGData } from '@/services/epgService';
 
-export const EPGSettingsDialog = () => {
+export const EPGSettingsDialog = ({ onRefreshComplete }: { onRefreshComplete?: () => void }) => {
   const [open, setOpen] = useState(false);
   const [refreshDays, setRefreshDays] = useState(7);
-  const { toast } = useToast();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     getEPGSettings().then(settings => {
@@ -30,35 +32,42 @@ export const EPGSettingsDialog = () => {
     try {
       await saveEPGSettings(refreshDays);
       setOpen(false);
-      toast({
-        title: 'Success',
-        description: 'EPG settings saved successfully',
-      });
+      toast.success('EPG settings saved successfully');
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to save EPG settings',
-        variant: 'destructive',
-      });
+      toast.error(error instanceof Error ? error.message : 'Failed to save EPG settings');
+    }
+  };
+
+  const handleRefreshEPG = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshEPGData();
+      if (onRefreshComplete) {
+        onRefreshComplete();
+      }
+    } catch (error) {
+      // Error handling is done in refreshEPGData
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">
-          EPG Settings
+        <Button variant="outline" size="icon">
+          <Settings className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>EPG Settings</DialogTitle>
           <DialogDescription>
-            Configure how often to refresh EPG data
+            Configure EPG refresh settings and manage EPG data
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 py-4">
+        <div className="space-y-6 py-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="refreshDays" className="text-sm font-medium">
                 Refresh Interval (days)
@@ -72,11 +81,22 @@ export const EPGSettingsDialog = () => {
                 onChange={(e) => setRefreshDays(parseInt(e.target.value))}
               />
             </div>
+            <Button type="submit" className="w-full">Save settings</Button>
+          </form>
+          
+          <div className="border-t pt-4">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="w-full"
+              onClick={handleRefreshEPG}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing EPG...' : 'Refresh EPG Now'}
+            </Button>
           </div>
-          <DialogFooter>
-            <Button type="submit">Save changes</Button>
-          </DialogFooter>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );
