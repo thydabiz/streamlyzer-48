@@ -31,9 +31,17 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
       throw new Error(error.message || 'Failed to authenticate with IPTV provider');
     }
     
+    console.log('Auth response received:', data);
+    
     if (!data || !data.success) {
       console.error('Authentication failed:', data);
       throw new Error(data?.error || 'Failed to authenticate with IPTV provider');
+    }
+
+    // Validate that we have at least user_info in the response
+    if (!data.data || !data.data.user_info) {
+      console.error('Invalid authentication response:', data);
+      throw new Error('Invalid response from IPTV provider. Missing user information.');
     }
 
     console.log('Authentication successful, saving credentials...');
@@ -163,7 +171,31 @@ export const refreshEPGData = async () => {
   try {
     const credentials = await getStoredCredentials();
     if (!credentials) {
+      console.error('No stream credentials found');
+      toast.error('No stream credentials found');
       throw new Error('No stream credentials found');
+    }
+
+    console.log('Refreshing EPG data with stored credentials...');
+    const { data, error } = await supabase.functions.invoke('xtream-auth', {
+      body: {
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password,
+        action: 'get_epg'
+      }
+    });
+
+    if (error) {
+      console.error('Error refreshing EPG data:', error);
+      toast.error('Failed to refresh EPG data: ' + error.message);
+      throw error;
+    }
+
+    if (!data || !data.success) {
+      console.error('Invalid response from EPG refresh:', data);
+      toast.error('Failed to refresh EPG data: Invalid response from provider');
+      throw new Error('Invalid response from EPG refresh');
     }
 
     await supabase
@@ -172,11 +204,13 @@ export const refreshEPGData = async () => {
         last_refresh: new Date().toISOString()
       });
 
-    console.log('EPG data refreshed');
+    console.log('EPG data refresh request sent successfully');
     toast.success('EPG data refreshed');
+    
+    return data;
   } catch (error) {
     console.error('Error refreshing EPG data:', error);
-    toast.error('Failed to refresh EPG data');
+    toast.error('Failed to refresh EPG data: ' + (error instanceof Error ? error.message : 'Unknown error'));
     throw error;
   }
 };
