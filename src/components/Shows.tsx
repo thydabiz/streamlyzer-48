@@ -63,12 +63,53 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
     return true;
   });
 
+  // Common section header with refresh button that's always visible
+  const sectionHeader = (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-2xl font-semibold">
+        TV Shows {filteredShows.length > 0 ? `(${filteredShows.length})` : ''}
+      </h2>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          onClick={handleRefreshData}
+          disabled={refreshing}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh Shows
+        </Button>
+        {['Drama', 'Comedy', 'Reality', 'Documentary'].map(genre => (
+          <Button
+            key={genre}
+            variant="outline"
+            className="focus:ring-4 focus:ring-white/20 focus:outline-none"
+          >
+            {genre}
+          </Button>
+        ))}
+        <Button
+          variant="outline"
+          onClick={() => onYearChange(yearFilter === 2024 ? undefined : 2024)}
+          className={`${yearFilter === 2024 ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+        >
+          2024
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => onRatingChange(ratingFilter === 'TV-MA' ? undefined : 'TV-MA')}
+          className={`${ratingFilter === 'TV-MA' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
+        >
+          TV-MA
+        </Button>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-semibold">TV Shows</h2>
-        </div>
+        {sectionHeader}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {Array.from({ length: 10 }).map((_, i) => (
             <div key={i} className="aspect-[2/3] rounded-lg bg-gray-800 animate-pulse" />
@@ -80,45 +121,7 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold">
-          TV Shows {filteredShows.length > 0 ? `(${filteredShows.length})` : ''}
-        </h2>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRefreshData}
-            disabled={refreshing}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh Shows
-          </Button>
-          {['Drama', 'Comedy', 'Reality', 'Documentary'].map(genre => (
-            <Button
-              key={genre}
-              variant="outline"
-              className="focus:ring-4 focus:ring-white/20 focus:outline-none"
-            >
-              {genre}
-            </Button>
-          ))}
-          <Button
-            variant="outline"
-            onClick={() => onYearChange(yearFilter === 2024 ? undefined : 2024)}
-            className={`${yearFilter === 2024 ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
-          >
-            2024
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => onRatingChange(ratingFilter === 'TV-MA' ? undefined : 'TV-MA')}
-            className={`${ratingFilter === 'TV-MA' ? 'bg-white/10' : ''} focus:ring-4 focus:ring-white/20`}
-          >
-            TV-MA
-          </Button>
-        </div>
-      </div>
+      {sectionHeader}
       {filteredShows.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filteredShows.map((show) => (
