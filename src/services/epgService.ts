@@ -307,6 +307,10 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
 
     if (!data) {
       console.log(`No current program found for channel ${channelId}`);
+      
+      // Since we didn't find a program, let's try to fetch EPG data for this channel
+      await fetchProgramsForChannel(channelId);
+      
       return undefined;
     }
 
@@ -315,6 +319,51 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
   } catch (error) {
     console.error('Error in getCurrentProgram:', error);
     return undefined;
+  }
+};
+
+// New function to specifically fetch program data for a single channel
+export const fetchProgramsForChannel = async (channelId: string): Promise<boolean> => {
+  try {
+    console.log(`Fetching program data specifically for channel ${channelId}`);
+    const credentials = await getStoredCredentials();
+    if (!credentials) {
+      console.error('No credentials found for fetching program data');
+      return false;
+    }
+    
+    const { data: response, error } = await supabase.functions.invoke('xtream-auth', {
+      body: {
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password,
+        action: 'get_epg',
+        stream_id: channelId
+      }
+    });
+    
+    if (error || !response?.success) {
+      console.error('Failed to fetch program data for channel:', error || response);
+      return false;
+    }
+    
+    if (response.data && (Array.isArray(response.data.epg_listings) || Array.isArray(response.data.programs))) {
+      const programsData = Array.isArray(response.data.epg_listings) 
+        ? response.data.epg_listings 
+        : (Array.isArray(response.data.programs) ? response.data.programs : []);
+      
+      if (programsData.length > 0) {
+        console.log(`Processing ${programsData.length} programs for channel ${channelId}`);
+        await storeEPGPrograms(programsData);
+        return true;
+      }
+    }
+    
+    console.log(`No program data found for channel ${channelId}`);
+    return false;
+  } catch (error) {
+    console.error(`Error fetching programs for channel ${channelId}:`, error);
+    return false;
   }
 };
 
@@ -338,6 +387,28 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
       return [];
     }
 
+    if (!data || data.length === 0) {
+      console.log(`No program schedule found for channel ${channelId}, attempting to fetch`);
+      await fetchProgramsForChannel(channelId);
+      
+      // Try fetching again after program data has been updated
+      const { data: retryData, error: retryError } = await supabase
+        .from('programs')
+        .select('*')
+        .eq('channel_id', channelId)
+        .gte('end_time', startTime)
+        .lte('start_time', endTime)
+        .order('start_time');
+        
+      if (retryError) {
+        console.error('Error in retry fetch of program schedule:', retryError);
+        return [];
+      }
+      
+      console.log(`Found ${retryData.length} programs in schedule for channel ${channelId} after fetching`);
+      return retryData.map(mapProgramData);
+    }
+
     console.log(`Found ${data.length} programs in schedule for channel ${channelId}`);
     return data.map(mapProgramData);
   } catch (error) {
@@ -349,15 +420,39 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
 export const getMovies = async (): Promise<EPGProgram[]> => {
   console.log('Fetching movies...');
   try {
+    // First check if we have any movies in the programs table
     const { data, error } = await supabase
       .from('programs')
       .select('*')
       .ilike('category', '%movie%')
-      .order('start_time', { ascending: false });
+      .order('start_time', { ascending: false })
+      .limit(20);  // Limit the results to avoid performance issues
 
     if (error) {
       console.error('Error fetching movies:', error);
       return [];
+    }
+
+    if (!data || data.length === 0) {
+      // If no movies found, try to fetch program data
+      console.log('No movies found in database, attempting to refresh EPG data...');
+      await refreshEPGData();
+      
+      // Try again after refreshing
+      const { data: retryData, error: retryError } = await supabase
+        .from('programs')
+        .select('*')
+        .ilike('category', '%movie%')
+        .order('start_time', { ascending: false })
+        .limit(20);
+        
+      if (retryError) {
+        console.error('Error in retry fetch of movies:', retryError);
+        return [];
+      }
+      
+      console.log(`Found ${retryData.length} movies after refreshing EPG data`);
+      return retryData.map(mapProgramData);
     }
 
     console.log(`Found ${data.length} movies`);
@@ -371,15 +466,39 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
 export const getShows = async (): Promise<EPGProgram[]> => {
   console.log('Fetching shows...');
   try {
+    // First check if we have any shows in the programs table
     const { data, error } = await supabase
       .from('programs')
       .select('*')
       .not('category', 'ilike', '%movie%')
-      .order('start_time', { ascending: false });
+      .order('start_time', { ascending: false })
+      .limit(20);  // Limit the results to avoid performance issues
 
     if (error) {
       console.error('Error fetching shows:', error);
       return [];
+    }
+
+    if (!data || data.length === 0) {
+      // If no shows found, try to refresh program data
+      console.log('No shows found in database, attempting to refresh EPG data...');
+      await refreshEPGData();
+      
+      // Try again after refreshing
+      const { data: retryData, error: retryError } = await supabase
+        .from('programs')
+        .select('*')
+        .not('category', 'ilike', '%movie%')
+        .order('start_time', { ascending: false })
+        .limit(20);
+        
+      if (retryError) {
+        console.error('Error in retry fetch of shows:', retryError);
+        return [];
+      }
+      
+      console.log(`Found ${retryData.length} shows after refreshing EPG data`);
+      return retryData.map(mapProgramData);
     }
 
     console.log(`Found ${data.length} shows`);
@@ -436,7 +555,49 @@ export const refreshEPGData = async () => {
       console.log('Channels found in database, proceeding with EPG refresh');
     }
 
-    console.log('Fetching EPG data from provider...');
+    // Get the full list of channels to fetch EPG data for each
+    const { data: allChannels } = await supabase
+      .from('channels')
+      .select('channel_id')
+      .order('channel_id')
+      .limit(50);  // Start with a reasonable batch size
+      
+    if (allChannels && allChannels.length > 0) {
+      console.log(`Found ${allChannels.length} channels, fetching EPG data for each...`);
+      let successCount = 0;
+      
+      // Process channels in smaller batches to avoid overwhelming the server
+      const batchSize = 5;
+      for (let i = 0; i < allChannels.length; i += batchSize) {
+        const batch = allChannels.slice(i, i + batchSize);
+        console.log(`Processing EPG data for channel batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(allChannels.length/batchSize)}`);
+        
+        // Process channels in parallel but with a limit
+        const results = await Promise.all(
+          batch.map(async (channel) => {
+            try {
+              const success = await fetchProgramsForChannel(channel.channel_id);
+              return success;
+            } catch (error) {
+              console.error(`Error fetching programs for channel ${channel.channel_id}:`, error);
+              return false;
+            }
+          })
+        );
+        
+        successCount += results.filter(Boolean).length;
+        
+        // Add a small delay between batches to prevent rate limiting
+        if (i + batchSize < allChannels.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      console.log(`Completed EPG data fetch for ${successCount} out of ${allChannels.length} channels`);
+    }
+
+    // Also try the general EPG fetch endpoint
+    console.log('Fetching general EPG data from provider...');
     const { data: response, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
         url: credentials.url,
@@ -447,53 +608,47 @@ export const refreshEPGData = async () => {
     });
 
     if (error) {
-      console.error('Failed to fetch EPG data:', error);
+      console.error('Failed to fetch general EPG data:', error);
       toast.error('Failed to fetch EPG data: ' + error.message);
-      return false;
-    }
-
-    if (!response?.success) {
-      console.error('Invalid response from EPG refresh:', response);
-      toast.error('Failed to refresh EPG data: Invalid response from provider');
-      return false;
-    }
-
-    // Store program data if available
-    if (response.data && (Array.isArray(response.data.epg_listings) || Array.isArray(response.data.programs))) {
-      const programsData = Array.isArray(response.data.epg_listings) 
-        ? response.data.epg_listings 
-        : (Array.isArray(response.data.programs) ? response.data.programs : []);
-        
-      console.log(`Processing ${programsData.length} EPG listings...`);
-      await storeEPGPrograms(programsData);
-    } else {
-      console.log('No EPG listings found in response:', response);
-      // Try to fetch EPG data with a different approach if needed
-      if (response.data && typeof response.data === 'object') {
-        console.log('Attempting to extract EPG data from response object...');
-        
-        // Some providers may return EPG data in a different format
-        // Try to find arrays that might contain program data
-        const possibleEPGArrays = Object.entries(response.data)
-          .filter(([_, value]) => Array.isArray(value) && (value as any[]).length > 0)
-          .map(([key, value]) => ({ key, data: value }));
+      // Continue with individual channel data we fetched
+    } else if (response?.success) {
+      // Store program data if available
+      if (response.data && (Array.isArray(response.data.epg_listings) || Array.isArray(response.data.programs))) {
+        const programsData = Array.isArray(response.data.epg_listings) 
+          ? response.data.epg_listings 
+          : (Array.isArray(response.data.programs) ? response.data.programs : []);
           
-        if (possibleEPGArrays.length > 0) {
-          console.log(`Found ${possibleEPGArrays.length} potential EPG data arrays in response`);
+        console.log(`Processing ${programsData.length} EPG listings from general fetch...`);
+        await storeEPGPrograms(programsData);
+      } else {
+        console.log('No EPG listings found in general response:', response);
+        // Try to extract EPG data from response if it's in a different format
+        if (response.data && typeof response.data === 'object') {
+          console.log('Attempting to extract EPG data from response object...');
           
-          for (const { key, data } of possibleEPGArrays) {
-            console.log(`Checking array '${key}' with ${(data as any[]).length} items for EPG data...`);
+          // Some providers may return EPG data in a different format
+          // Try to find arrays that might contain program data
+          const possibleEPGArrays = Object.entries(response.data)
+            .filter(([_, value]) => Array.isArray(value) && (value as any[]).length > 0)
+            .map(([key, value]) => ({ key, data: value }));
             
-            // Sample the first item to see if it looks like EPG data
-            const sample = (data as any[])[0];
-            if (sample && (
-              (sample.title && (sample.start || sample.start_time) && (sample.end || sample.end_time)) ||
-              (sample.program_title && sample.program_start && sample.program_end) ||
-              (sample.name && sample.start_timestamp && sample.stop_timestamp)
-            )) {
-              console.log(`Array '${key}' appears to contain EPG data, processing...`);
-              await storeEPGPrograms(data as any[]);
-              break;
+          if (possibleEPGArrays.length > 0) {
+            console.log(`Found ${possibleEPGArrays.length} potential EPG data arrays in response`);
+            
+            for (const { key, data } of possibleEPGArrays) {
+              console.log(`Checking array '${key}' with ${(data as any[]).length} items for EPG data...`);
+              
+              // Sample the first item to see if it looks like EPG data
+              const sample = (data as any[])[0];
+              if (sample && (
+                (sample.title && (sample.start || sample.start_time) && (sample.end || sample.end_time)) ||
+                (sample.program_title && sample.program_start && sample.program_end) ||
+                (sample.name && sample.start_timestamp && sample.stop_timestamp)
+              )) {
+                console.log(`Array '${key}' appears to contain EPG data, processing...`);
+                await storeEPGPrograms(data as any[]);
+                break;
+              }
             }
           }
         }
@@ -543,7 +698,7 @@ export const storeEPGPrograms = async (programs: any[]) => {
           const title = program.title || program.program_title || program.name || '';
           const startTime = program.start || program.start_time || program.program_start || program.start_timestamp || '';
           const endTime = program.end || program.end_time || program.program_end || program.stop_timestamp || '';
-          const channelId = program.channel_id || program.channel || '';
+          const channelId = program.channel_id || program.channel || program.id || '';
           
           return title && startTime && endTime && channelId;
         })
@@ -553,10 +708,10 @@ export const storeEPGPrograms = async (programs: any[]) => {
           const description = program.description || program.program_description || program.desc || '';
           const startTime = program.start || program.start_time || program.program_start || program.start_timestamp || '';
           const endTime = program.end || program.end_time || program.program_end || program.stop_timestamp || '';
-          const channelId = program.channel_id || program.channel || '';
-          const category = program.category || program.program_category || '';
+          const channelId = program.channel_id || program.channel || program.id || '';
+          const category = program.category || program.program_category || program.genre || '';
           const rating = program.rating || program.program_rating || '';
-          const thumbnail = program.thumbnail || program.image || '';
+          const thumbnail = program.thumbnail || program.image || program.icon || '';
           
           // Make sure dates are properly formatted
           let startDate, endDate;
@@ -584,6 +739,9 @@ export const storeEPGPrograms = async (programs: any[]) => {
             console.error(`Error parsing dates for program: ${title}`, error);
             return null;
           }
+          
+          // Add debugging to see what's being saved
+          console.log(`Storing program: ${title} for channel ${channelId}, category: ${category}, dates: ${startDate.toISOString()} - ${endDate.toISOString()}`);
           
           return {
             channel_id: channelId.toString(),

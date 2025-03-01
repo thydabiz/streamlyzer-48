@@ -1,9 +1,10 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getMovies } from "@/services/epgService";
+import { getMovies, refreshEPGData } from "@/services/epgService";
 import type { EPGProgram } from "@/types/epg";
 import { toast } from "sonner";
+import { RefreshCw } from "lucide-react";
 
 interface MoviesProps {
   yearFilter?: number;
@@ -15,13 +16,17 @@ interface MoviesProps {
 const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: MoviesProps) => {
   const [movies, setMovies] = useState<EPGProgram[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const loadMovies = async () => {
+      setLoading(true);
       try {
         const data = await getMovies();
+        console.log(`Loaded ${data.length} movies`);
         setMovies(data);
       } catch (error) {
+        console.error("Failed to load movies:", error);
         toast.error("Failed to load movies");
       } finally {
         setLoading(false);
@@ -30,6 +35,24 @@ const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Movi
 
     loadMovies();
   }, []);
+
+  const handleRefreshData = async () => {
+    setRefreshing(true);
+    try {
+      const success = await refreshEPGData();
+      if (success) {
+        // Reload movies after successful EPG refresh
+        const data = await getMovies();
+        setMovies(data);
+        toast.success(`Loaded ${data.length} movies after refresh`);
+      }
+    } catch (error) {
+      console.error("Failed to refresh movie data:", error);
+      toast.error("Failed to refresh movie data");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filteredMovies = movies.filter(movie => {
     if (yearFilter) {
@@ -58,8 +81,19 @@ const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Movi
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold">Movies</h2>
+        <h2 className="text-2xl font-semibold">
+          Movies {filteredMovies.length > 0 ? `(${filteredMovies.length})` : ''}
+        </h2>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleRefreshData}
+            disabled={refreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh Movies
+          </Button>
           {['Action', 'Drama', 'Comedy', 'Horror'].map(genre => (
             <Button
               key={genre}
@@ -85,31 +119,47 @@ const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Movi
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {filteredMovies.map((movie) => (
-          <button
-            key={movie.id}
-            className="group relative aspect-[2/3] rounded-lg overflow-hidden focus:ring-4 focus:ring-white/20 focus:outline-none"
+      {filteredMovies.length > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {filteredMovies.map((movie) => (
+            <button
+              key={movie.id}
+              className="group relative aspect-[2/3] rounded-lg overflow-hidden focus:ring-4 focus:ring-white/20 focus:outline-none"
+            >
+              {movie.thumbnail ? (
+                <img 
+                  src={movie.thumbnail} 
+                  alt={movie.title}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
+                  <span className="text-xl font-semibold text-center px-4">{movie.title}</span>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-4">
+                <h3 className="font-medium text-lg">{movie.title}</h3>
+                <p className="text-sm text-gray-400">
+                  {new Date(movie.startTime).getFullYear()} • {movie.category}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <p className="text-gray-400">No movies found. Try refreshing the EPG data.</p>
+          <Button 
+            onClick={handleRefreshData}
+            disabled={refreshing}
+            className="flex items-center gap-2"
           >
-            {movie.thumbnail ? (
-              <img 
-                src={movie.thumbnail} 
-                alt={movie.title}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 bg-gray-800" />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-4">
-              <h3 className="font-medium text-lg">{movie.title}</h3>
-              <p className="text-sm text-gray-400">
-                {new Date(movie.startTime).getFullYear()} • {movie.category}
-              </p>
-            </div>
-          </button>
-        ))}
-      </div>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh Movies
+          </Button>
+        </div>
+      )}
     </section>
   );
 };
