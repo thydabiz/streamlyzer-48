@@ -10,12 +10,14 @@ interface XtreamCredentials {
 
 export const authenticateXtream = async (credentials: XtreamCredentials) => {
   try {
+    console.log('Starting authentication with provided credentials...');
     let url = credentials.url;
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `http://${url}`;
     }
     url = url.replace(/\/$/, '');
 
+    console.log('Sending auth request to Edge Function...');
     const { data, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
         url,
@@ -24,9 +26,17 @@ export const authenticateXtream = async (credentials: XtreamCredentials) => {
       }
     });
 
-    if (error) throw new Error(error.message || 'Failed to authenticate with IPTV provider');
-    if (!data || !data.success) throw new Error(data?.error || 'Failed to authenticate with IPTV provider');
+    if (error) {
+      console.error('Authentication error from Edge Function:', error);
+      throw new Error(error.message || 'Failed to authenticate with IPTV provider');
+    }
+    
+    if (!data || !data.success) {
+      console.error('Authentication failed:', data);
+      throw new Error(data?.error || 'Failed to authenticate with IPTV provider');
+    }
 
+    console.log('Authentication successful, saving credentials...');
     // Save the credentials after successful authentication
     await saveStreamCredentials({
       url,
