@@ -475,24 +475,24 @@ export const refreshEPGData = async () => {
         // Some providers may return EPG data in a different format
         // Try to find arrays that might contain program data
         const possibleEPGArrays = Object.entries(response.data)
-          .filter(([_, value]) => Array.isArray(value) && value.length > 0)
+          .filter(([_, value]) => Array.isArray(value) && (value as any[]).length > 0)
           .map(([key, value]) => ({ key, data: value }));
           
         if (possibleEPGArrays.length > 0) {
           console.log(`Found ${possibleEPGArrays.length} potential EPG data arrays in response`);
           
           for (const { key, data } of possibleEPGArrays) {
-            console.log(`Checking array '${key}' with ${data.length} items for EPG data...`);
+            console.log(`Checking array '${key}' with ${(data as any[]).length} items for EPG data...`);
             
             // Sample the first item to see if it looks like EPG data
-            const sample = data[0];
+            const sample = (data as any[])[0];
             if (sample && (
               (sample.title && (sample.start || sample.start_time) && (sample.end || sample.end_time)) ||
               (sample.program_title && sample.program_start && sample.program_end) ||
               (sample.name && sample.start_timestamp && sample.stop_timestamp)
             )) {
               console.log(`Array '${key}' appears to contain EPG data, processing...`);
-              await storeEPGPrograms(data);
+              await storeEPGPrograms(data as any[]);
               break;
             }
           }
@@ -524,8 +524,9 @@ export const refreshEPGData = async () => {
   }
 };
 
-// Add a new function to store EPG program data
-const storeEPGPrograms = async (programs: any[]) => {
+// Add a new function to store EPG program data and explicitly export it
+// This makes it available for import in iptvService.ts
+export const storeEPGPrograms = async (programs: any[]) => {
   console.log(`Storing ${programs.length} EPG programs...`);
   if (programs.length === 0) return;
 

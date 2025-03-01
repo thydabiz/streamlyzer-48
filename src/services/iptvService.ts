@@ -188,7 +188,7 @@ export const refreshEPGData = async () => {
       console.log('No channels found in database, fetching channels first...');
       
       // Import dynamically to avoid circular dependencies
-      const { getChannels } = await import('./epgService');
+      const { getChannels, storeEPGPrograms } = await import('./epgService');
       const channels = await getChannels();
       
       if (!channels || channels.length === 0) {
