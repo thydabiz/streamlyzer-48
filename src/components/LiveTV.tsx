@@ -32,9 +32,15 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   const [categoryType, setCategoryType] = useState<string>("all");
 
   const loadChannels = async () => {
+    setLoading(true);
     try {
       const channelData = await getChannels();
       setChannels(channelData);
+      
+      if (channelData.length === 0) {
+        toast.error("No channels found. Your provider may not support channel listings.");
+        return;
+      }
       
       // Load current programs for all channels
       const programs = await Promise.all(
@@ -45,6 +51,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       );
       setCurrentPrograms(Object.fromEntries(programs));
     } catch (error) {
+      console.error("Failed to load channels:", error);
       toast.error("Failed to load channels");
     } finally {
       setLoading(false);
@@ -70,6 +77,20 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     }
   };
 
+  const handleRefreshChannels = async () => {
+    setRefreshing(true);
+    try {
+      await getChannels();
+      await loadChannels();
+      toast.success("Channels refreshed successfully");
+    } catch (error) {
+      console.error("Failed to refresh channels:", error);
+      toast.error("Failed to refresh channels");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleRefreshEPG = async () => {
     setRefreshing(true);
     try {
@@ -77,6 +98,7 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       await loadChannels();
       toast.success("EPG data refreshed successfully");
     } catch (error) {
+      console.error("Failed to refresh EPG data:", error);
       toast.error("Failed to refresh EPG data");
     } finally {
       setRefreshing(false);
@@ -91,8 +113,27 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     return <div className="flex items-center justify-center h-64">Loading channels...</div>;
   }
 
+  // Handle case with no channels but authenticated
   if (!channels.length) {
-    return <div className="text-center p-4">No channels available</div>;
+    return (
+      <div className="text-center p-8 space-y-6">
+        <h2 className="text-2xl font-semibold mb-4">No Channels Available</h2>
+        <p className="text-gray-400 mb-6">
+          Your IPTV provider hasn't provided any channel listings or we couldn't fetch them.
+        </p>
+        <div className="flex items-center justify-center gap-4">
+          <StreamCredentialsManager />
+          <Button 
+            onClick={handleRefreshChannels} 
+            disabled={refreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh Channels
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const categories = Array.from(
@@ -106,10 +147,11 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
 
   const filteredChannels = channels.filter(channel => {
     const program = currentPrograms[channel.id];
-    if (!program) return true;
+    if (!program && categoryFilter) return false;
     
-    if (categoryFilter && program.category !== categoryFilter) return false;
+    if (categoryFilter && program && program.category !== categoryFilter) return false;
     if (categoryType !== "all") {
+      if (!program) return false;
       const categoryMatch = program.category?.toLowerCase().includes(categoryType.toLowerCase());
       if (!categoryMatch) return false;
     }
@@ -162,6 +204,16 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Live Channels</h2>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshChannels}
+            disabled={refreshing}
+            className="flex items-center gap-1"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh Channels
+          </Button>
           <StreamCredentialsManager />
           <EPGSettingsDialog onRefreshComplete={handleRefreshComplete} />
         </div>

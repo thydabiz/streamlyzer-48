@@ -176,6 +176,32 @@ export const refreshEPGData = async () => {
       throw new Error('No stream credentials found');
     }
 
+    // First, check if we have channels in the database
+    console.log('Checking for channels before refreshing EPG...');
+    const { count, error: countError } = await supabase
+      .from('channels')
+      .select('*', { count: 'exact', head: true });
+      
+    if (countError) {
+      console.error('Error checking channel count:', countError);
+    } else if (count === 0) {
+      console.log('No channels found in database, fetching channels first...');
+      
+      // Import dynamically to avoid circular dependencies
+      const { getChannels } = await import('./epgService');
+      const channels = await getChannels();
+      
+      if (!channels || channels.length === 0) {
+        console.error('No channels could be fetched, cannot refresh EPG');
+        toast.error('No channels available. Please refresh channels first.');
+        throw new Error('No channels available');
+      }
+      
+      console.log(`Successfully fetched ${channels.length} channels`);
+    } else {
+      console.log(`Found ${count} channels in database, proceeding with EPG refresh`);
+    }
+
     console.log('Refreshing EPG data with stored credentials...');
     const { data, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
@@ -196,6 +222,27 @@ export const refreshEPGData = async () => {
       console.error('Invalid response from EPG refresh:', data);
       toast.error('Failed to refresh EPG data: Invalid response from provider');
       throw new Error('Invalid response from EPG refresh');
+    }
+
+    // Process EPG data if it exists
+    if (data.data && (data.data.programs || data.data.epg_listings)) {
+      const programsData = data.data.programs || data.data.epg_listings || [];
+      
+      if (Array.isArray(programsData) && programsData.length > 0) {
+        console.log(`Processing ${programsData.length} EPG entries...`);
+        
+        // Import dynamically to avoid circular dependencies
+        const { storeEPGPrograms } = await import('./epgService');
+        if (typeof storeEPGPrograms === 'function') {
+          await storeEPGPrograms(programsData);
+        } else {
+          console.error('storeEPGPrograms function not found in epgService');
+        }
+      } else {
+        console.log('No EPG programs found in response');
+      }
+    } else {
+      console.log('No EPG data found in response:', data);
     }
 
     await supabase
