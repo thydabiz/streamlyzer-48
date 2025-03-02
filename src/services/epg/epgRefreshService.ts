@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { getStoredCredentials } from '../iptvService';
 import { storeEPGPrograms } from './epgStorageService';
 import { getChannels } from './channelService';
-import { fetchProgramsForChannel } from './programService';
 
 export const refreshEPGData = async () => {
   console.log('Starting EPG refresh...');
@@ -162,3 +161,6 @@ export const refreshEPGData = async () => {
     return false;
   }
 };
+
+// Import at the end to avoid circular dependencies
+import { fetchProgramsForChannel } from './programService';

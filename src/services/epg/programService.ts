@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { EPGProgram } from '@/types/epg';
 import { getStoredCredentials } from '../iptvService';
+import { storeEPGPrograms } from './epgStorageService';
 
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
   console.log(`Fetching current program for channel ${channelId}...`);
@@ -239,3 +240,4 @@ export const mapProgramData = (program: any): EPGProgram => ({
 
 // Import from epgRefreshService to avoid circular dependencies
 import { refreshEPGData } from './epgRefreshService';
+
