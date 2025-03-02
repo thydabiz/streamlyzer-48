@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 import { 
@@ -6,6 +7,11 @@ import {
   storeEPGSettingsOffline,
   getEPGSettingsOffline
 } from './offlineStorage';
+
+// Function to save stream credentials
+export const saveStreamCredentials = async (credentials: { username: string; password: string; url: string }) => {
+  return await authenticateXtream(credentials);
+};
 
 // Modify the existing authenticateXtream function to store credentials offline
 export const authenticateXtream = async (credentials: { username: string; password: string; url: string }) => {
@@ -37,11 +43,11 @@ export const authenticateXtream = async (credentials: { username: string; passwo
       throw new Error(data.message || 'Authentication failed');
     }
     
-    // Store credentials in the database
+    // Store credentials in the database - Fix the type error by converting id to string
     const { error: storageError } = await supabase
       .from('stream_credentials')
       .upsert({
-        id: 1,
+        id: '1', // Convert to string
         username,
         password,
         url: normalizedUrl,
@@ -84,7 +90,7 @@ export const getStoredCredentials = async () => {
     const { data, error } = await supabase
       .from('stream_credentials')
       .select('*')
-      .eq('id', 1)
+      .eq('id', '1') // Convert to string
       .maybeSingle();
     
     if (error) {
