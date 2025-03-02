@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { Channel, EPGProgram } from "@/types/epg";
-import { getCurrentProgram } from "@/services/epgService";
+import { getCurrentProgram } from "@/services/epg";
 
 export const useChannel = (channelId?: string) => {
   const [currentProgram, setCurrentProgram] = useState<EPGProgram | undefined>();

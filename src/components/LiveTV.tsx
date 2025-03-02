@@ -1,13 +1,12 @@
 
 import { useState, useEffect } from "react";
-import { getChannels, getCurrentProgram, getProgramSchedule, refreshEPGData, fetchProgramsForChannel } from "@/services/epgService";
+import { getChannels, getProgramSchedule, refreshEPGData, fetchProgramsForChannel } from "@/services/epg";
 import { toast } from "sonner";
 import type { Channel, EPGProgram } from "@/types/epg";
 import LiveTVHeader from "./LiveTVHeader";
 import NoChannelsMessage from "./NoChannelsMessage";
 import NowPlaying from "./NowPlaying";
 import ChannelList from "./ChannelList";
-import { useChannel } from "@/hooks/useChannel";
 
 interface LiveTVProps {
   selectedChannel: Channel | null;
@@ -45,12 +44,15 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       // Load current programs for all channels
       const programs = await Promise.all(
         channelData.slice(0, 20).map(async (channel) => { // Limit to first 20 channels initially
-          const program = await getCurrentProgram(channel.id);
+          const program = await fetchProgramsForChannel(channel.id).then(() => {
+            // Get the current program for this channel
+            return import("@/services/epg").then(({ getCurrentProgram }) => getCurrentProgram(channel.id));
+          });
           return [channel.id, program] as const;
         })
       );
       
-      const programsMap = Object.fromEntries(programs);
+      const programsMap = Object.fromEntries(programs.filter(([_, program]) => program !== undefined));
       setCurrentPrograms(programsMap);
       
       // Extract categories from programs
@@ -69,14 +71,16 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
         setTimeout(async () => {
           const remainingPrograms = await Promise.all(
             channelData.slice(20).map(async (channel) => {
-              const program = await getCurrentProgram(channel.id);
+              const program = await fetchProgramsForChannel(channel.id).then(() => {
+                return import("@/services/epg").then(({ getCurrentProgram }) => getCurrentProgram(channel.id));
+              });
               return [channel.id, program] as const;
             })
           );
           
           setCurrentPrograms(prev => ({
             ...prev,
-            ...Object.fromEntries(remainingPrograms)
+            ...Object.fromEntries(remainingPrograms.filter(([_, program]) => program !== undefined))
           }));
           
           // Update categories

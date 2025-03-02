@@ -1,7 +1,7 @@
 
 import { Button } from "@/components/ui/button";
 import { EPGProgram } from "@/types/epg";
-import { fetchProgramsForChannel } from "@/services/epgService";
+import { fetchProgramsForChannel } from "@/services/epg";
 
 interface ProgramTimelineProps {
   channelId: string;

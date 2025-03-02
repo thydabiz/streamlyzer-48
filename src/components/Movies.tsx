@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getMovies, refreshEPGData } from "@/services/epgService";
+import { getMovies, refreshEPGData } from "@/services/epg";
 import type { EPGProgram } from "@/types/epg";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";

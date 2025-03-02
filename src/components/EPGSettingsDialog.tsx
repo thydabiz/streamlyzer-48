@@ -14,7 +14,7 @@ import {
 import { Settings, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { getEPGSettings, saveEPGSettings } from '@/services/iptvService';
-import { refreshEPGData } from '@/services/epgService';
+import { refreshEPGData } from '@/services/epg';
 
 export const EPGSettingsDialog = ({ onRefreshComplete }: { onRefreshComplete?: () => void }) => {
   const [open, setOpen] = useState(false);
