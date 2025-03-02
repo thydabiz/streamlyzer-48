@@ -1,12 +1,19 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Channel } from '@/types/epg';
 import { getStoredCredentials } from '../iptvService';
+import { storeChannelsOffline, getChannelsOffline } from '../offlineStorage';
 
 export const getChannels = async (): Promise<Channel[]> => {
   console.log('Fetching channels...');
   try {
+    // First try to get offline channels
+    const offlineChannels = await getChannelsOffline();
+    if (offlineChannels && offlineChannels.length > 0) {
+      console.log(`Found ${offlineChannels.length} channels in offline storage`);
+      return offlineChannels;
+    }
+
     const credentials = await getStoredCredentials();
     if (!credentials) {
       console.error('No stream credentials found');
@@ -53,6 +60,10 @@ export const getChannels = async (): Promise<Channel[]> => {
 
       console.log(`Mapped ${channels.length} channels, storing in database...`);
       await storeChannels(channels);
+      
+      // Store channels offline
+      await storeChannelsOffline(channels);
+      
       console.log(`Successfully processed ${channels.length} channels`);
       return channels;
     } else if (response.data?.available_channels && Array.isArray(response.data.available_channels)) {
@@ -231,13 +242,18 @@ const fetchChannelsFallback = async (credentials: any): Promise<Channel[]> => {
     
     if (existingChannels && existingChannels.length > 0) {
       console.log(`Found ${existingChannels.length} existing channels in database`);
-      return existingChannels.map(channel => ({
+      const mappedChannels = existingChannels.map(channel => ({
         id: channel.channel_id,
         name: channel.name,
         number: channel.number || 0,
         streamUrl: channel.stream_url,
         logo: channel.logo || null
       }));
+      
+      // Store channels offline
+      await storeChannelsOffline(mappedChannels);
+      
+      return mappedChannels;
     }
     
     console.error('All channel fetching methods failed');
@@ -281,6 +297,10 @@ export const storeChannels = async (channels: Channel[]) => {
         throw error;
       }
     }
+    
+    // Also store channels offline
+    await storeChannelsOffline(channels);
+    
     console.log('All channel batches stored successfully');
   } catch (error) {
     console.error('Error in storeChannels:', error);

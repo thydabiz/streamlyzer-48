@@ -4,11 +4,24 @@ import { toast } from 'sonner';
 import type { EPGProgram } from '@/types/epg';
 import { getStoredCredentials } from '../iptvService';
 import { storeEPGPrograms } from './epgStorageService';
+import { 
+  getProgramScheduleOffline, 
+  getCurrentProgramOffline,
+  storeProgramsOffline 
+} from '../offlineStorage';
 
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
   console.log(`Fetching current program for channel ${channelId}...`);
-  const now = new Date().toISOString();
+  
   try {
+    // First check offline storage
+    const offlineProgram = await getCurrentProgramOffline(channelId);
+    if (offlineProgram) {
+      console.log(`Found current program for channel ${channelId} in offline storage:`, offlineProgram.title);
+      return offlineProgram;
+    }
+    
+    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('programs')
       .select('*')
@@ -32,7 +45,12 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
     }
 
     console.log(`Found current program for channel ${channelId}:`, data.title);
-    return mapProgramData(data);
+    const mappedProgram = mapProgramData(data);
+    
+    // Store the program data offline
+    await storeProgramsOffline([mappedProgram]);
+    
+    return mappedProgram;
   } catch (error) {
     console.error('Error in getCurrentProgram:', error);
     return undefined;
@@ -86,11 +104,19 @@ export const fetchProgramsForChannel = async (channelId: string): Promise<boolea
 
 export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[]> => {
   console.log(`Fetching program schedule for channel ${channelId}...`);
-  const now = new Date();
-  const startTime = new Date(now.setHours(now.getHours() - 1)).toISOString();
-  const endTime = new Date(now.setHours(now.getHours() + 4)).toISOString();
-
+  
   try {
+    // First try to get program schedule from offline storage
+    const offlineSchedule = await getProgramScheduleOffline(channelId);
+    if (offlineSchedule && offlineSchedule.length > 0) {
+      console.log(`Found ${offlineSchedule.length} programs in offline schedule for channel ${channelId}`);
+      return offlineSchedule;
+    }
+    
+    const now = new Date();
+    const startTime = new Date(now.setHours(now.getHours() - 1)).toISOString();
+    const endTime = new Date(now.setHours(now.getHours() + 4)).toISOString();
+
     const { data, error } = await supabase
       .from('programs')
       .select('*')
@@ -123,11 +149,27 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
       }
       
       console.log(`Found ${retryData.length} programs in schedule for channel ${channelId} after fetching`);
-      return retryData.map(mapProgramData);
+      
+      const mappedPrograms = retryData.map(mapProgramData);
+      
+      // Store program data offline
+      if (mappedPrograms.length > 0) {
+        await storeProgramsOffline(mappedPrograms);
+      }
+      
+      return mappedPrograms;
     }
 
     console.log(`Found ${data.length} programs in schedule for channel ${channelId}`);
-    return data.map(mapProgramData);
+    
+    const mappedPrograms = data.map(mapProgramData);
+    
+    // Store program data offline
+    if (mappedPrograms.length > 0) {
+      await storeProgramsOffline(mappedPrograms);
+    }
+    
+    return mappedPrograms;
   } catch (error) {
     console.error('Error in getProgramSchedule:', error);
     return [];
@@ -240,4 +282,3 @@ export const mapProgramData = (program: any): EPGProgram => ({
 
 // Import from epgRefreshService to avoid circular dependencies
 import { refreshEPGData } from './epgRefreshService';
-

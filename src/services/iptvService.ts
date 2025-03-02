@@ -1,119 +1,113 @@
-
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
-interface XtreamCredentials {
-  url: string;
-  username: string;
-  password: string;
-}
+import { 
+  storeCredentialsOffline, 
+  getCredentialsOffline,
+  storeEPGSettingsOffline,
+  getEPGSettingsOffline
+} from './offlineStorage';
 
-export const authenticateXtream = async (credentials: XtreamCredentials) => {
+// Modify the existing authenticateXtream function to store credentials offline
+export const authenticateXtream = async (credentials: { username: string; password: string; url: string }) => {
   try {
-    console.log('Starting authentication with provided credentials...');
-    let url = credentials.url;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `http://${url}`;
+    const { username, password, url } = credentials;
+    
+    if (!username || !password || !url) {
+      throw new Error('Please provide username, password, and URL');
     }
-    url = url.replace(/\/$/, '');
-
-    console.log('Sending auth request to Edge Function...');
+    
+    // Normalize the URL to ensure it works correctly
+    const normalizedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+    
     const { data, error } = await supabase.functions.invoke('xtream-auth', {
       body: {
-        url,
-        username: credentials.username,
-        password: credentials.password
+        username,
+        password,
+        url: normalizedUrl
       }
     });
-
+    
     if (error) {
-      console.error('Authentication error from Edge Function:', error);
-      throw new Error(error.message || 'Failed to authenticate with IPTV provider');
+      console.error('Authentication error:', error);
+      throw new Error(`Failed to authenticate: ${error.message}`);
     }
     
-    console.log('Auth response received:', data);
-    
-    if (!data || !data.success) {
+    if (!data.success) {
       console.error('Authentication failed:', data);
-      throw new Error(data?.error || 'Failed to authenticate with IPTV provider');
+      throw new Error(data.message || 'Authentication failed');
     }
-
-    // Validate that we have at least user_info in the response
-    if (!data.data || !data.data.user_info) {
-      console.error('Invalid authentication response:', data);
-      throw new Error('Invalid response from IPTV provider. Missing user information.');
-    }
-
-    console.log('Authentication successful, saving credentials...');
-    // Save the credentials after successful authentication
-    await saveStreamCredentials({
-      url,
-      username: credentials.username,
-      password: credentials.password
-    });
-
-    console.log('Authentication successful:', data);
-    return data.data;
-  } catch (error) {
-    console.error('Authentication error:', error);
-    toast.error(error.message || 'Failed to authenticate with IPTV provider');
-    throw error;
-  }
-};
-
-export const getStoredCredentials = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('stream_credentials')
-      .select('*')
-      .maybeSingle();
-
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Error fetching stored credentials:', error);
-    throw error;
-  }
-};
-
-export const saveStreamCredentials = async (credentials: XtreamCredentials) => {
-  try {
-    const { error } = await supabase
+    
+    // Store credentials in the database
+    const { error: storageError } = await supabase
       .from('stream_credentials')
       .upsert({
-        type: 'xtream',
-        url: credentials.url.replace(/\/$/, ''),
-        username: credentials.username,
-        password: credentials.password,
-        mac_address: null,
-        serial_number: null
+        id: 1,
+        username,
+        password,
+        url: normalizedUrl,
+        user_agent: navigator.userAgent,
+        last_updated: new Date().toISOString()
       });
-
-    if (error) throw error;
-    console.log('Credentials saved successfully');
-    toast.success('Credentials saved successfully');
+    
+    if (storageError) {
+      console.error('Error storing credentials:', storageError);
+      throw new Error(`Error storing credentials: ${storageError.message}`);
+    }
+    
+    // Store credentials offline
+    await storeCredentialsOffline({
+      username,
+      password,
+      url: normalizedUrl,
+      user_agent: navigator.userAgent,
+      last_updated: new Date().toISOString()
+    });
+    
+    return data;
   } catch (error) {
-    console.error('Error saving credentials:', error);
-    toast.error('Failed to save credentials');
+    console.error('Error in authenticateXtream:', error);
     throw error;
   }
 };
 
-export const getEPGSettings = async () => {
+// Modify getStoredCredentials to check offline storage first
+export const getStoredCredentials = async () => {
   try {
+    // Check if we have credentials stored offline
+    const offlineCredentials = await getCredentialsOffline();
+    if (offlineCredentials) {
+      console.log('Using offline credentials');
+      return offlineCredentials;
+    }
+    
+    // If no offline credentials, try to get them from Supabase
     const { data, error } = await supabase
-      .from('epg_settings')
+      .from('stream_credentials')
       .select('*')
+      .eq('id', 1)
       .maybeSingle();
-
-    if (error) throw error;
-    return data ?? { refresh_days: 7, last_refresh: null };
+    
+    if (error) {
+      console.error('Error fetching credentials:', error);
+      return null;
+    }
+    
+    if (!data) {
+      console.log('No credentials found');
+      return null;
+    }
+    
+    // Store the credentials offline for future use
+    await storeCredentialsOffline(data);
+    
+    return data;
   } catch (error) {
-    console.error('Error fetching EPG settings:', error);
-    throw error;
+    console.error('Error in getStoredCredentials:', error);
+    return null;
   }
 };
 
+// Modify saveEPGSettings to store settings offline
 export const saveEPGSettings = async (refreshDays: number) => {
   try {
     const { error } = await supabase
@@ -122,57 +116,56 @@ export const saveEPGSettings = async (refreshDays: number) => {
         refresh_days: refreshDays,
         last_refresh: new Date().toISOString()
       });
-
-    if (error) throw error;
-    toast.success('EPG settings updated');
-  } catch (error) {
-    console.error('Error saving EPG settings:', error);
-    toast.error('Failed to save EPG settings');
-    throw error;
-  }
-};
-
-// Function to start monitoring EPG refresh
-export const startEPGRefreshMonitoring = async () => {
-  try {
-    const settings = await getEPGSettings();
-    const refreshMs = settings.refresh_days * 24 * 60 * 60 * 1000;
-    
-    if (window.epgRefreshInterval) {
-      clearInterval(window.epgRefreshInterval);
+      
+    if (error) {
+      console.error('Error saving EPG settings:', error);
+      throw new Error(`Error saving EPG settings: ${error.message}`);
     }
-
-    window.epgRefreshInterval = window.setInterval(async () => {
-      const { data } = await supabase
-        .from('epg_settings')
-        .select('last_refresh')
-        .maybeSingle();
-
-      if (!data?.last_refresh) {
-        await refreshEPGData();
-        return;
-      }
-
-      const lastRefresh = new Date(data.last_refresh);
-      const now = new Date();
-      const diffMs = now.getTime() - lastRefresh.getTime();
-
-      if (diffMs >= refreshMs) {
-        await refreshEPGData();
-      }
-    }, 60000);
+    
+    // Store settings offline
+    await storeEPGSettingsOffline({
+      refresh_days: refreshDays,
+      last_refresh: new Date().toISOString()
+    });
+    
+    return { success: true };
   } catch (error) {
-    console.error('Error starting EPG refresh monitoring:', error);
+    console.error('Error in saveEPGSettings:', error);
     throw error;
   }
 };
 
-// Import at the end to avoid circular dependencies
-import { refreshEPGData } from './epg';
-
-// Add TypeScript declaration for the global window object
-declare global {
-  interface Window {
-    epgRefreshInterval?: number;
+// Modify getEPGSettings to check offline storage first
+export const getEPGSettings = async () => {
+  try {
+    // Check if we have settings stored offline
+    const offlineSettings = await getEPGSettingsOffline();
+    if (offlineSettings) {
+      console.log('Using offline EPG settings');
+      return offlineSettings;
+    }
+    
+    // If no offline settings, try to get them from Supabase
+    const { data, error } = await supabase
+      .from('epg_settings')
+      .select('*')
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Error fetching EPG settings:', error);
+      return { refresh_days: 7, last_refresh: new Date().toISOString() };
+    }
+    
+    if (!data) {
+      return { refresh_days: 7, last_refresh: new Date().toISOString() };
+    }
+    
+    // Store settings offline for future use
+    await storeEPGSettingsOffline(data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error in getEPGSettings:', error);
+    return { refresh_days: 7, last_refresh: new Date().toISOString() };
   }
-}
+};

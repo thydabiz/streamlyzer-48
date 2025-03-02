@@ -7,12 +7,22 @@ import { toast } from 'sonner';
 interface VideoPlayerProps {
   url: string;
   title?: string;
+  isFullscreen?: boolean;
+  onFullscreenToggle?: () => void;
+  onError?: () => void;
 }
 
-const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
+const VideoPlayer = ({ 
+  url, 
+  title, 
+  isFullscreen = false,
+  onFullscreenToggle,
+  onError
+}: VideoPlayerProps) => {
   const [isReady, setIsReady] = useState(false);
   const [isError, setIsError] = useState(false);
   const [hasRetried, setHasRetried] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const playerRef = useRef<ReactPlayer>(null);
 
   // Check if HLS is supported in this environment
@@ -21,6 +31,7 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
       // Clear error state on new URL
       setIsError(false);
       setHasRetried(false);
+      setIsPlaying(true);
       
       if (!Hls.isSupported()) {
         console.log("HLS not supported in this browser");
@@ -49,6 +60,25 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
     }
   }, [isError, hasRetried]);
 
+  // Handle keyboard events for TV remote control
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Space or Enter for play/pause
+      if (e.key === ' ' || e.key === 'Enter') {
+        setIsPlaying(!isPlaying);
+      }
+      // F key or F11 for fullscreen
+      else if (e.key === 'f' || e.key === 'F' || e.key === 'F11') {
+        onFullscreenToggle?.();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPlaying, onFullscreenToggle]);
+
   const handleReady = () => {
     console.log("Player ready");
     setIsReady(true);
@@ -58,6 +88,10 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
   const handleError = (error: any) => {
     console.error("Playback error:", error);
     setIsError(true);
+    
+    if (onError) {
+      onError();
+    }
     
     // Provide more specific error messages based on error type
     if (error && error.type === 'networkError') {
@@ -73,21 +107,28 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
     console.log("Player buffering");
   };
 
+  const handlePlayPause = () => {
+    setIsPlaying(!isPlaying);
+  };
+
   return (
-    <div className="rounded-lg overflow-hidden glass">
-      {title && (
+    <div className={`rounded-lg overflow-hidden glass ${isFullscreen ? 'h-full' : ''}`}>
+      {title && !isFullscreen && (
         <div className="p-4 bg-black/50">
           <h3 className="text-lg font-semibold">{title}</h3>
         </div>
       )}
-      <div className={`video-player-wrapper ${!isReady || isError ? 'animate-pulse bg-gray-800' : ''}`}>
+      <div 
+        className={`video-player-wrapper relative ${!isReady || isError ? 'animate-pulse bg-gray-800' : ''}`}
+        style={{ height: isFullscreen ? '100vh' : 'auto' }}
+      >
         <ReactPlayer
           ref={playerRef}
           url={url}
           width="100%"
-          height="100%"
-          playing
-          controls
+          height={isFullscreen ? "100%" : "100%"}
+          playing={isPlaying}
+          controls={!isFullscreen} // Hide default controls in fullscreen mode
           onReady={handleReady}
           onError={handleError}
           onBuffer={handleBuffer}
@@ -135,8 +176,24 @@ const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
             background: '#000',
           }}
         />
+        
+        {/* Custom controls for fullscreen mode (TV-friendly) */}
+        {isFullscreen && (
+          <div 
+            className="absolute inset-0 flex items-center justify-center cursor-pointer"
+            onClick={handlePlayPause}
+          >
+            {!isPlaying && (
+              <div className="bg-black/50 p-8 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {isError && (
+      {isError && !isFullscreen && (
         <div className="p-3 bg-red-900/20 text-center">
           <p className="text-sm text-red-200">
             Stream error - This channel may be temporarily unavailable
