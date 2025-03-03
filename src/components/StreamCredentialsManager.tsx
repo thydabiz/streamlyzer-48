@@ -23,9 +23,9 @@ const StreamCredentialsManager = () => {
       toast.success('Stream credentials updated successfully');
       setOpen(false);
       window.location.reload(); // Reload to refresh the streams
-    } catch (error) {
+    } catch (error: any) {
       console.error('Credentials error:', error);
-      toast.error('Failed to update stream credentials');
+      toast.error(`Failed to update stream credentials: ${error.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }

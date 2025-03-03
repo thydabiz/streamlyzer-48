@@ -48,8 +48,7 @@ export const authenticateXtream = async (credentials: { username: string; passwo
       username,
       password,
       url: normalizedUrl,
-      user_agent: navigator.userAgent,
-      last_updated: new Date().toISOString()
+      type: 'xtream'
     };
     
     // We'll let Supabase generate the UUID for us by not specifying an id
@@ -65,7 +64,9 @@ export const authenticateXtream = async (credentials: { username: string; passwo
     // Store credentials offline
     await storeCredentialsOffline({
       ...credentialData,
-      id: 'local_credentials' // Use a consistent string ID for offline storage
+      id: 'local_credentials', // Use a consistent string ID for offline storage
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
     
     return data;
