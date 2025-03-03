@@ -13,7 +13,7 @@ export const saveStreamCredentials = async (credentials: { username: string; pas
   return await authenticateXtream(credentials);
 };
 
-// Modify the existing authenticateXtream function to store credentials offline
+// Authenticate Xtream API and store credentials
 export const authenticateXtream = async (credentials: { username: string; password: string; url: string }) => {
   try {
     const { username, password, url } = credentials;
@@ -43,7 +43,7 @@ export const authenticateXtream = async (credentials: { username: string; passwo
       throw new Error(data.message || 'Authentication failed');
     }
     
-    // Store credentials in the database with proper UUID handling
+    // Store credentials in the database
     const credentialData = {
       username,
       password,
@@ -51,7 +51,8 @@ export const authenticateXtream = async (credentials: { username: string; passwo
       type: 'xtream'
     };
     
-    // We'll let Supabase generate the UUID for us by not specifying an id
+    // Let Supabase generate the UUID for us
+    console.log('Storing credentials in database:', credentialData);
     const { error: storageError } = await supabase
       .from('stream_credentials')
       .upsert(credentialData);
@@ -76,7 +77,7 @@ export const authenticateXtream = async (credentials: { username: string; passwo
   }
 };
 
-// Modify getStoredCredentials to check offline storage first
+// Get stored credentials
 export const getStoredCredentials = async () => {
   try {
     // Check if we have credentials stored offline
@@ -114,7 +115,7 @@ export const getStoredCredentials = async () => {
   }
 };
 
-// Modify saveEPGSettings to store settings offline
+// Save EPG settings
 export const saveEPGSettings = async (refreshDays: number) => {
   try {
     const { error } = await supabase
@@ -142,7 +143,7 @@ export const saveEPGSettings = async (refreshDays: number) => {
   }
 };
 
-// Modify getEPGSettings to check offline storage first
+// Get EPG settings
 export const getEPGSettings = async () => {
   try {
     // Check if we have settings stored offline

@@ -6,17 +6,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveStreamCredentials } from '@/services/iptvService';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const StreamCredentialsManager = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
 
     try {
       await saveStreamCredentials({ username, password, url });
@@ -25,7 +28,9 @@ const StreamCredentialsManager = () => {
       window.location.reload(); // Reload to refresh the streams
     } catch (error: any) {
       console.error('Credentials error:', error);
-      toast.error(`Failed to update stream credentials: ${error.message || 'Unknown error'}`);
+      const errorMessage = error.message || 'Unknown error';
+      setError(errorMessage);
+      toast.error(`Failed to update stream credentials: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -43,6 +48,11 @@ const StreamCredentialsManager = () => {
           <DialogTitle>Update Stream Credentials</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           <div>
             <Input
               type="url"
