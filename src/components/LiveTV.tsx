@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getChannels, getProgramSchedule, refreshEPGData, fetchProgramsForChannel } from "@/services/epg";
 import { toast } from "sonner";
 import type { Channel, EPGProgram } from "@/types/epg";
@@ -14,6 +15,8 @@ interface LiveTVProps {
   onCategoryChange: (category: string | undefined) => void;
 }
 
+const BATCH_SIZE = 100;
+
 const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryChange }: LiveTVProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,30 +25,54 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   const [programSchedule, setProgramSchedule] = useState<Record<string, EPGProgram[]>>({});
   const [categories, setCategories] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const loaderRef = useRef<HTMLDivElement>(null);
 
-  const loadChannels = async () => {
-    setLoading(true);
+  const fetchChannelsBatch = useCallback(async (pageIndex: number) => {
+    if (pageIndex === 0) setLoading(true);
     setLoadError(null);
+    
     try {
-      const channelData = await getChannels();
-      console.log(`Loaded ${channelData.length} channels`);
-      setChannels(channelData);
+      const offset = pageIndex * BATCH_SIZE;
+      console.log(`Fetching channels batch: page ${pageIndex}, offset ${offset}`);
+      
+      const channelData = await getChannels(offset, BATCH_SIZE);
+      console.log(`Loaded ${channelData.length} channels for page ${pageIndex}`);
       
       if (channelData.length === 0) {
-        toast.error("No channels found. Your provider may not support channel listings.");
+        if (pageIndex === 0) {
+          toast.error("No channels found. Your provider may not support channel listings.");
+          setLoadError("No channels found. Please check your stream credentials.");
+        }
+        setHasMore(false);
         setLoading(false);
-        setLoadError("No channels found. Please check your stream credentials.");
         return;
       }
       
-      // Select the first channel if none is selected
-      if (!selectedChannel && channelData.length > 0) {
+      if (pageIndex === 0 && !selectedChannel && channelData.length > 0) {
         onChannelSelect(channelData[0]);
       }
       
-      // Load current programs for all channels
+      if (channelData.length < BATCH_SIZE) {
+        setHasMore(false);
+      }
+      
+      // Update channels list
+      setChannels(prev => {
+        const newChannels = [...prev];
+        channelData.forEach(channel => {
+          if (!newChannels.find(c => c.id === channel.id)) {
+            newChannels.push(channel);
+          }
+        });
+        return newChannels;
+      });
+      
+      // Load current programs for this batch of channels
+      const channelsToLoad = channelData.slice(0, 20); // Limit to first 20 channels per batch
       const programs = await Promise.all(
-        channelData.slice(0, 20).map(async (channel) => { // Limit to first 20 channels initially
+        channelsToLoad.map(async (channel) => {
           try {
             const program = await fetchProgramsForChannel(channel.id).then(() => {
               // Get the current program for this channel
@@ -60,25 +87,29 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
       );
       
       const programsMap = Object.fromEntries(programs.filter(([_, program]) => program !== undefined));
-      setCurrentPrograms(programsMap);
+      setCurrentPrograms(prev => ({
+        ...prev,
+        ...programsMap
+      }));
       
       // Extract categories from programs
-      const uniqueCategories = Array.from(
-        new Set(
-          Object.values(programsMap)
-            .filter((program): program is EPGProgram => !!program)
-            .map(program => program.category)
-            .filter(Boolean)
-        )
-      );
-      setCategories(uniqueCategories);
+      const newCategories = Object.values(programsMap)
+        .filter((program): program is EPGProgram => !!program)
+        .map(program => program.category)
+        .filter(Boolean);
       
-      // Then load programs for remaining channels in background
+      setCategories(prev => {
+        const uniqueCategories = Array.from(new Set([...prev, ...newCategories]));
+        return uniqueCategories;
+      });
+      
+      // Load remaining channels in this batch in background
       if (channelData.length > 20) {
         setTimeout(async () => {
           try {
+            const remainingChannels = channelData.slice(20);
             const remainingPrograms = await Promise.all(
-              channelData.slice(20).map(async (channel) => {
+              remainingChannels.map(async (channel) => {
                 try {
                   const program = await fetchProgramsForChannel(channel.id).then(() => {
                     return import("@/services/epg").then(({ getCurrentProgram }) => getCurrentProgram(channel.id));
@@ -97,16 +128,14 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
             }));
             
             // Update categories
-            const allPrograms = [...Object.values(programsMap), ...remainingPrograms.map(([_, p]) => p)];
-            const allUniqueCategories = Array.from(
-              new Set(
-                allPrograms
-                  .filter((program): program is EPGProgram => !!program)
-                  .map(program => program.category)
-                  .filter(Boolean)
-              )
-            );
-            setCategories(allUniqueCategories);
+            const additionalCategories = remainingPrograms
+              .map(([_, program]) => program?.category)
+              .filter(Boolean) as string[];
+            
+            setCategories(prev => {
+              const uniqueCategories = Array.from(new Set([...prev, ...additionalCategories]));
+              return uniqueCategories;
+            });
           } catch (error) {
             console.error("Error loading remaining programs:", error);
           }
@@ -119,11 +148,38 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     } finally {
       setLoading(false);
     }
-  };
+  }, [onChannelSelect, selectedChannel]);
 
+  // Initial load
   useEffect(() => {
-    loadChannels();
-  }, []);
+    fetchChannelsBatch(0);
+  }, [fetchChannelsBatch]);
+  
+  // Setup intersection observer for infinite scrolling
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && hasMore && !loading && !refreshing) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          fetchChannelsBatch(nextPage);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentLoader = loaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
+      }
+    };
+  }, [fetchChannelsBatch, hasMore, loading, page, refreshing]);
 
   useEffect(() => {
     if (selectedChannel) {
@@ -156,9 +212,16 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   const handleRefreshChannels = async () => {
     setRefreshing(true);
     try {
-      const channels = await getChannels();
+      // Reset state
+      setChannels([]);
+      setCurrentPrograms({});
+      setCategories([]);
+      setPage(0);
+      setHasMore(true);
+      
+      const channels = await getChannels(0, BATCH_SIZE);
       if (channels.length > 0) {
-        await loadChannels();
+        fetchChannelsBatch(0);
         toast.success(`Refreshed ${channels.length} channels successfully`);
       } else {
         toast.error("No channels found during refresh");
@@ -175,7 +238,15 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
     setRefreshing(true);
     try {
       await refreshEPGData();
-      await loadChannels();
+      
+      // Reset and reload
+      setChannels([]);
+      setCurrentPrograms({});
+      setCategories([]);
+      setPage(0);
+      setHasMore(true);
+      
+      fetchChannelsBatch(0);
       toast.success("EPG data refreshed successfully");
     } catch (error) {
       console.error("Failed to refresh EPG data:", error);
@@ -186,10 +257,17 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
   };
 
   const handleRefreshComplete = async () => {
-    await loadChannels();
+    // Reset and reload
+    setChannels([]);
+    setCurrentPrograms({});
+    setCategories([]);
+    setPage(0);
+    setHasMore(true);
+    
+    fetchChannelsBatch(0);
   };
 
-  if (loading) {
+  if (loading && channels.length === 0) {
     return <div className="flex items-center justify-center h-64">
       <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mr-2"></div> 
       Loading channels...
@@ -246,6 +324,16 @@ const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCategoryCh
         onCategoryChange={onCategoryChange}
         categories={categories}
       />
+      
+      {/* Infinite scroll loader */}
+      <div 
+        ref={loaderRef} 
+        className="h-20 flex items-center justify-center mt-4"
+      >
+        {hasMore && !loading && !refreshing && channels.length > 0 && (
+          <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+        )}
+      </div>
     </div>
   );
 };

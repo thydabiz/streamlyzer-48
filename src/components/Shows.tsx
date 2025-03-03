@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { getShows, refreshEPGData } from "@/services/epg";
 import type { EPGProgram } from "@/types/epg";
@@ -13,38 +13,91 @@ interface ShowsProps {
   onRatingChange: (rating: string | undefined) => void;
 }
 
+const BATCH_SIZE = 100;
+
 const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: ShowsProps) => {
   const [shows, setShows] = useState<EPGProgram[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+  const loaderRef = useRef<HTMLDivElement>(null);
+  
+  // Fetch a batch of shows
+  const fetchShowsBatch = useCallback(async (pageIndex: number) => {
+    try {
+      if (pageIndex === 0) setLoading(true);
+      
+      const offset = pageIndex * BATCH_SIZE;
+      console.log(`Fetching shows batch: page ${pageIndex}, offset ${offset}`);
+      
+      const data = await getShows(offset, BATCH_SIZE);
+      console.log(`Received ${data.length} shows for page ${pageIndex}`);
+      
+      if (data.length === 0) {
+        setHasMore(false);
+      } else if (data.length < BATCH_SIZE) {
+        setHasMore(false);
+        setShows(prev => [...prev, ...data]);
+      } else {
+        setShows(prev => [...prev, ...data]);
+        setHasMore(true);
+      }
+    } catch (error) {
+      console.error("Failed to load shows batch:", error);
+      toast.error("Failed to load shows");
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
+  // Initial load
   useEffect(() => {
-    const loadShows = async () => {
-      setLoading(true);
-      try {
-        const data = await getShows();
-        console.log(`Loaded ${data.length} TV shows`);
-        setShows(data);
-      } catch (error) {
-        console.error("Failed to load TV shows:", error);
-        toast.error("Failed to load TV shows");
-      } finally {
-        setLoading(false);
+    setShows([]);
+    setPage(0);
+    setHasMore(true);
+    fetchShowsBatch(0);
+  }, [fetchShowsBatch]);
+
+  // Setup intersection observer for infinite scrolling
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && hasMore && !loading && !refreshing) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          fetchShowsBatch(nextPage);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentLoader = loaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
       }
     };
-
-    loadShows();
-  }, []);
+  }, [fetchShowsBatch, hasMore, loading, page, refreshing]);
 
   const handleRefreshData = async () => {
     setRefreshing(true);
     try {
       const success = await refreshEPGData();
       if (success) {
-        // Reload shows after successful EPG refresh
-        const data = await getShows();
+        // Reset and reload shows after successful EPG refresh
+        setShows([]);
+        setPage(0);
+        setHasMore(true);
+        const data = await getShows(0, BATCH_SIZE);
         setShows(data);
-        toast.success(`Loaded ${data.length} TV shows after refresh`);
+        toast.success(`Loaded ${data.length} shows after refresh`);
       }
     } catch (error) {
       console.error("Failed to refresh show data:", error);
@@ -106,7 +159,7 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
     </div>
   );
 
-  if (loading) {
+  if (loading && shows.length === 0) {
     return (
       <section>
         {sectionHeader}
@@ -123,33 +176,46 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
     <section>
       {sectionHeader}
       {filteredShows.length > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filteredShows.map((show) => (
-            <button
-              key={show.id}
-              className="group relative aspect-[2/3] rounded-lg overflow-hidden focus:ring-4 focus:ring-white/20 focus:outline-none"
-            >
-              {show.thumbnail ? (
-                <img 
-                  src={show.thumbnail} 
-                  alt={show.title}
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                  <span className="text-xl font-semibold text-center px-4">{show.title}</span>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {filteredShows.map((show) => (
+              <button
+                key={show.id}
+                className="group relative aspect-[2/3] rounded-lg overflow-hidden focus:ring-4 focus:ring-white/20 focus:outline-none"
+              >
+                {show.thumbnail ? (
+                  <img 
+                    src={show.thumbnail} 
+                    alt={show.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    loading="lazy" // Use native lazy loading
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
+                    <span className="text-xl font-semibold text-center px-4">{show.title}</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <h3 className="font-medium text-lg">{show.title}</h3>
+                  <p className="text-sm text-gray-400">
+                    {show.category || 'TV Show'}
+                  </p>
                 </div>
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-              <div className="absolute bottom-0 left-0 right-0 p-4">
-                <h3 className="font-medium text-lg">{show.title}</h3>
-                <p className="text-sm text-gray-400">
-                  {show.category || 'TV Show'}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+          
+          {/* Infinite scroll loader */}
+          <div 
+            ref={loaderRef} 
+            className="h-20 flex items-center justify-center mt-4"
+          >
+            {hasMore && (
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+            )}
+          </div>
+        </>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <p className="text-gray-400">No TV shows found. Try refreshing the EPG data.</p>

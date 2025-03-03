@@ -1,19 +1,71 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Channel } from '@/types/epg';
 import { getStoredCredentials } from '../iptvService';
 import { storeChannelsOffline, getChannelsOffline } from '../offlineStorage';
+import { 
+  storeInCache, 
+  getFromCache, 
+  getAllFromCache, 
+  shouldRefreshCache, 
+  channelsCache 
+} from '../cachingService';
 
-export const getChannels = async (): Promise<Channel[]> => {
-  console.log('Fetching channels...');
+const BATCH_SIZE = 100;
+
+export const getChannels = async (offset = 0, limit = BATCH_SIZE): Promise<Channel[]> => {
+  console.log(`Fetching channels (offset: ${offset}, limit: ${limit})...`);
+  const cacheKey = 'channels';
+  const batchKey = `batch_${offset}_${limit}`;
+  
   try {
-    // First try to get offline channels
+    // Check if we should refresh the cache
+    const shouldRefresh = await shouldRefreshCache(cacheKey, 24 * 60 * 60 * 1000); // 24 hour cache
+    
+    if (!shouldRefresh) {
+      // Check if we have any cached channels
+      const cachedChannels = await getFromCache<Channel>(channelsCache, cacheKey, batchKey);
+      if (cachedChannels && cachedChannels.length > 0) {
+        console.log(`Found ${cachedChannels.length} channels in cache (batch ${offset}-${offset+limit})`);
+        return cachedChannels;
+      }
+      
+      // If we have a specific batch missing but have other batches, try to get all channels
+      const allCachedChannels = await getAllFromCache<Channel>(channelsCache, cacheKey);
+      if (allCachedChannels && allCachedChannels.length > 0) {
+        // Filter just the batch we need
+        const batchedChannels = allCachedChannels.slice(offset, offset + limit);
+        if (batchedChannels.length > 0) {
+          console.log(`Using ${batchedChannels.length} channels from all cached channels`);
+          return batchedChannels;
+        }
+      }
+    }
+    
+    // If batch not in cache, try offline storage next
     const offlineChannels = await getChannelsOffline();
     if (offlineChannels && offlineChannels.length > 0) {
       console.log(`Found ${offlineChannels.length} channels in offline storage`);
-      return offlineChannels;
+      
+      // Store in cache for next time
+      if (!shouldRefresh) {
+        for (let i = 0; i < offlineChannels.length; i += BATCH_SIZE) {
+          const batchedChannels = offlineChannels.slice(i, i + BATCH_SIZE);
+          await storeInCache(
+            channelsCache, 
+            cacheKey, 
+            batchedChannels, 
+            `batch_${i}_${BATCH_SIZE}`
+          );
+        }
+      }
+      
+      // Return just the batch requested
+      return offlineChannels.slice(offset, offset + limit);
     }
 
+    // If not in cache or offline storage, fetch from provider
     const credentials = await getStoredCredentials();
     if (!credentials) {
       console.error('No stream credentials found');
@@ -45,10 +97,12 @@ export const getChannels = async (): Promise<Channel[]> => {
 
     console.log('Response from get_live_streams:', response);
 
+    let channels: Channel[] = [];
+    
     // Check if we have channels data directly
     if (Array.isArray(response.data)) {
       console.log(`Processing ${response.data.length} channels from direct response...`);
-      const channels = response.data
+      channels = response.data
         .filter((channel: any) => channel?.stream_id && channel?.name)
         .map((channel: any) => ({
           id: channel.stream_id.toString(),
@@ -57,19 +111,10 @@ export const getChannels = async (): Promise<Channel[]> => {
           streamUrl: `${credentials.url}/live/${credentials.username}/${credentials.password}/${channel.stream_id}`,
           logo: channel.stream_icon || null
         }));
-
-      console.log(`Mapped ${channels.length} channels, storing in database...`);
-      await storeChannels(channels);
-      
-      // Store channels offline
-      await storeChannelsOffline(channels);
-      
-      console.log(`Successfully processed ${channels.length} channels`);
-      return channels;
     } else if (response.data?.available_channels && Array.isArray(response.data.available_channels)) {
       // If we have channels in the available_channels array
       console.log(`Processing ${response.data.available_channels.length} channels from available_channels...`);
-      const channels = response.data.available_channels
+      channels = response.data.available_channels
         .filter((channel: any) => channel?.stream_id && channel?.name)
         .map((channel: any) => ({
           id: channel.stream_id.toString(),
@@ -78,16 +123,34 @@ export const getChannels = async (): Promise<Channel[]> => {
           streamUrl: `${credentials.url}/live/${credentials.username}/${credentials.password}/${channel.stream_id}`,
           logo: channel.stream_icon || null
         }));
-
-      console.log(`Mapped ${channels.length} channels, storing in database...`);
-      await storeChannels(channels);
-      console.log(`Successfully processed ${channels.length} channels`);
-      return channels;
     } else {
       // Try to fetch channels with a different action if both methods failed
       console.log('No channels found in response, trying alternative fetch method...');
-      return await fetchChannelsFallback(credentials);
+      channels = await fetchChannelsFallback(credentials);
     }
+    
+    if (channels.length > 0) {
+      console.log(`Mapped ${channels.length} channels, storing in cache and database...`);
+      
+      // Store all channels in database
+      await storeChannels(channels);
+      
+      // Store channels in cache by batches
+      for (let i = 0; i < channels.length; i += BATCH_SIZE) {
+        const batchedChannels = channels.slice(i, i + BATCH_SIZE);
+        await storeInCache(
+          channelsCache, 
+          cacheKey, 
+          batchedChannels, 
+          `batch_${i}_${BATCH_SIZE}`
+        );
+      }
+      
+      // Return just the batch requested
+      return channels.slice(offset, offset + limit);
+    }
+    
+    return [];
   } catch (error) {
     console.error('Error in getChannels:', error);
     toast.error('Failed to fetch channels: ' + (error instanceof Error ? error.message : 'Unknown error'));

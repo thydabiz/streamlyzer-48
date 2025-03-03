@@ -9,15 +9,35 @@ import {
   getCurrentProgramOffline,
   storeProgramsOffline 
 } from '../offlineStorage';
+import {
+  storeInCache,
+  getFromCache,
+  getAllFromCache,
+  shouldRefreshCache,
+  moviesCache,
+  showsCache,
+  programsCache
+} from '../cachingService';
+
+const BATCH_SIZE = 100;
 
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
   console.log(`Fetching current program for channel ${channelId}...`);
   
   try {
-    // First check offline storage
+    // First check cache
+    const cachedProgram = await getFromCache<EPGProgram>(programsCache, `current_${channelId}`);
+    if (cachedProgram && cachedProgram.length > 0) {
+      console.log(`Found current program for channel ${channelId} in cache:`, cachedProgram[0].title);
+      return cachedProgram[0];
+    }
+    
+    // Then check offline storage
     const offlineProgram = await getCurrentProgramOffline(channelId);
     if (offlineProgram) {
       console.log(`Found current program for channel ${channelId} in offline storage:`, offlineProgram.title);
+      // Also cache it for future use
+      await storeInCache(programsCache, `current_${channelId}`, [offlineProgram]);
       return offlineProgram;
     }
     
@@ -47,8 +67,9 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
     console.log(`Found current program for channel ${channelId}:`, data.title);
     const mappedProgram = mapProgramData(data);
     
-    // Store the program data offline
+    // Store the program data in both offline storage and cache
     await storeProgramsOffline([mappedProgram]);
+    await storeInCache(programsCache, `current_${channelId}`, [mappedProgram]);
     
     return mappedProgram;
   } catch (error) {
@@ -106,10 +127,19 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
   console.log(`Fetching program schedule for channel ${channelId}...`);
   
   try {
-    // First try to get program schedule from offline storage
+    // First check cache
+    const cachedSchedule = await getAllFromCache<EPGProgram>(programsCache, `schedule_${channelId}`);
+    if (cachedSchedule && cachedSchedule.length > 0) {
+      console.log(`Found ${cachedSchedule.length} programs in cached schedule for channel ${channelId}`);
+      return cachedSchedule;
+    }
+    
+    // Then try to get program schedule from offline storage
     const offlineSchedule = await getProgramScheduleOffline(channelId);
     if (offlineSchedule && offlineSchedule.length > 0) {
       console.log(`Found ${offlineSchedule.length} programs in offline schedule for channel ${channelId}`);
+      // Also cache for future use
+      await storeInCache(programsCache, `schedule_${channelId}`, offlineSchedule);
       return offlineSchedule;
     }
     
@@ -152,9 +182,10 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
       
       const mappedPrograms = retryData.map(mapProgramData);
       
-      // Store program data offline
+      // Store in both offline storage and cache
       if (mappedPrograms.length > 0) {
         await storeProgramsOffline(mappedPrograms);
+        await storeInCache(programsCache, `schedule_${channelId}`, mappedPrograms);
       }
       
       return mappedPrograms;
@@ -164,9 +195,10 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
     
     const mappedPrograms = data.map(mapProgramData);
     
-    // Store program data offline
+    // Store in both offline storage and cache
     if (mappedPrograms.length > 0) {
       await storeProgramsOffline(mappedPrograms);
+      await storeInCache(programsCache, `schedule_${channelId}`, mappedPrograms);
     }
     
     return mappedPrograms;
@@ -176,16 +208,31 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
   }
 };
 
-export const getMovies = async (): Promise<EPGProgram[]> => {
-  console.log('Fetching movies...');
+export const getMovies = async (offset = 0, limit = BATCH_SIZE): Promise<EPGProgram[]> => {
+  const cacheKey = 'movies';
+  const batchKey = `batch_${offset}_${limit}`;
+  console.log(`Fetching movies (offset: ${offset}, limit: ${limit})...`);
+  
   try {
-    // First check if we have any movies in the programs table
+    // Check if we need to refresh cache
+    const shouldRefresh = await shouldRefreshCache(cacheKey, 12 * 60 * 60 * 1000); // 12 hours cache
+    
+    if (!shouldRefresh) {
+      // Try to get from cache first
+      const cachedMovies = await getFromCache<EPGProgram>(moviesCache, cacheKey, batchKey);
+      if (cachedMovies && cachedMovies.length > 0) {
+        console.log(`Found ${cachedMovies.length} movies in cache (batch ${offset}-${offset+limit})`);
+        return cachedMovies;
+      }
+    }
+
+    // If not in cache or cache expired, fetch from database
     const { data, error } = await supabase
       .from('programs')
       .select('*')
       .ilike('category', '%movie%')
       .order('start_time', { ascending: false })
-      .limit(20);  // Limit the results to avoid performance issues
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching movies:', error);
@@ -193,45 +240,76 @@ export const getMovies = async (): Promise<EPGProgram[]> => {
     }
 
     if (!data || data.length === 0) {
-      // If no movies found, try to fetch program data
-      console.log('No movies found in database, attempting to refresh EPG data...');
-      await refreshEPGData();
-      
-      // Try again after refreshing
-      const { data: retryData, error: retryError } = await supabase
-        .from('programs')
-        .select('*')
-        .ilike('category', '%movie%')
-        .order('start_time', { ascending: false })
-        .limit(20);
+      // If this is the first batch and no movies found, try to refresh data
+      if (offset === 0) {
+        console.log('No movies found in database, attempting to refresh EPG data...');
+        await refreshEPGData();
         
-      if (retryError) {
-        console.error('Error in retry fetch of movies:', retryError);
-        return [];
+        // Try again after refreshing
+        const { data: retryData, error: retryError } = await supabase
+          .from('programs')
+          .select('*')
+          .ilike('category', '%movie%')
+          .order('start_time', { ascending: false })
+          .range(offset, offset + limit - 1);
+          
+        if (retryError) {
+          console.error('Error in retry fetch of movies:', retryError);
+          return [];
+        }
+        
+        if (retryData.length > 0) {
+          console.log(`Found ${retryData.length} movies after refreshing EPG data`);
+          const mappedMovies = retryData.map(mapProgramData);
+          
+          // Store in cache
+          await storeInCache(moviesCache, cacheKey, mappedMovies, batchKey);
+          
+          return mappedMovies;
+        }
       }
       
-      console.log(`Found ${retryData.length} movies after refreshing EPG data`);
-      return retryData.map(mapProgramData);
+      return [];
     }
 
-    console.log(`Found ${data.length} movies`);
-    return data.map(mapProgramData);
+    console.log(`Found ${data.length} movies (batch ${offset}-${offset+limit})`);
+    const mappedMovies = data.map(mapProgramData);
+    
+    // Store in cache
+    await storeInCache(moviesCache, cacheKey, mappedMovies, batchKey);
+    
+    return mappedMovies;
   } catch (error) {
     console.error('Error in getMovies:', error);
     return [];
   }
 };
 
-export const getShows = async (): Promise<EPGProgram[]> => {
-  console.log('Fetching shows...');
+export const getShows = async (offset = 0, limit = BATCH_SIZE): Promise<EPGProgram[]> => {
+  const cacheKey = 'shows';
+  const batchKey = `batch_${offset}_${limit}`;
+  console.log(`Fetching shows (offset: ${offset}, limit: ${limit})...`);
+  
   try {
-    // First check if we have any shows in the programs table
+    // Check if we need to refresh cache
+    const shouldRefresh = await shouldRefreshCache(cacheKey, 12 * 60 * 60 * 1000); // 12 hours cache
+    
+    if (!shouldRefresh) {
+      // Try to get from cache first
+      const cachedShows = await getFromCache<EPGProgram>(showsCache, cacheKey, batchKey);
+      if (cachedShows && cachedShows.length > 0) {
+        console.log(`Found ${cachedShows.length} shows in cache (batch ${offset}-${offset+limit})`);
+        return cachedShows;
+      }
+    }
+
+    // If not in cache or cache expired, fetch from database
     const { data, error } = await supabase
       .from('programs')
       .select('*')
       .not('category', 'ilike', '%movie%')
       .order('start_time', { ascending: false })
-      .limit(20);  // Limit the results to avoid performance issues
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching shows:', error);
@@ -239,29 +317,45 @@ export const getShows = async (): Promise<EPGProgram[]> => {
     }
 
     if (!data || data.length === 0) {
-      // If no shows found, try to refresh program data
-      console.log('No shows found in database, attempting to refresh EPG data...');
-      await refreshEPGData();
-      
-      // Try again after refreshing
-      const { data: retryData, error: retryError } = await supabase
-        .from('programs')
-        .select('*')
-        .not('category', 'ilike', '%movie%')
-        .order('start_time', { ascending: false })
-        .limit(20);
+      // If this is the first batch and no shows found, try to refresh data
+      if (offset === 0) {
+        console.log('No shows found in database, attempting to refresh EPG data...');
+        await refreshEPGData();
         
-      if (retryError) {
-        console.error('Error in retry fetch of shows:', retryError);
-        return [];
+        // Try again after refreshing
+        const { data: retryData, error: retryError } = await supabase
+          .from('programs')
+          .select('*')
+          .not('category', 'ilike', '%movie%')
+          .order('start_time', { ascending: false })
+          .range(offset, offset + limit - 1);
+          
+        if (retryError) {
+          console.error('Error in retry fetch of shows:', retryError);
+          return [];
+        }
+        
+        if (retryData.length > 0) {
+          console.log(`Found ${retryData.length} shows after refreshing EPG data`);
+          const mappedShows = retryData.map(mapProgramData);
+          
+          // Store in cache
+          await storeInCache(showsCache, cacheKey, mappedShows, batchKey);
+          
+          return mappedShows;
+        }
       }
       
-      console.log(`Found ${retryData.length} shows after refreshing EPG data`);
-      return retryData.map(mapProgramData);
+      return [];
     }
 
-    console.log(`Found ${data.length} shows`);
-    return data.map(mapProgramData);
+    console.log(`Found ${data.length} shows (batch ${offset}-${offset+limit})`);
+    const mappedShows = data.map(mapProgramData);
+    
+    // Store in cache
+    await storeInCache(showsCache, cacheKey, mappedShows, batchKey);
+    
+    return mappedShows;
   } catch (error) {
     console.error('Error in getShows:', error);
     return [];
