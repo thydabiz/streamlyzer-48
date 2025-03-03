@@ -43,17 +43,19 @@ export const authenticateXtream = async (credentials: { username: string; passwo
       throw new Error(data.message || 'Authentication failed');
     }
     
-    // Store credentials in the database - Fix the type error by converting id to string
+    // Store credentials in the database with proper UUID handling
+    const credentialData = {
+      username,
+      password,
+      url: normalizedUrl,
+      user_agent: navigator.userAgent,
+      last_updated: new Date().toISOString()
+    };
+    
+    // We'll let Supabase generate the UUID for us by not specifying an id
     const { error: storageError } = await supabase
       .from('stream_credentials')
-      .upsert({
-        id: '1', // Convert to string
-        username,
-        password,
-        url: normalizedUrl,
-        user_agent: navigator.userAgent,
-        last_updated: new Date().toISOString()
-      });
+      .upsert(credentialData);
     
     if (storageError) {
       console.error('Error storing credentials:', storageError);
@@ -62,11 +64,8 @@ export const authenticateXtream = async (credentials: { username: string; passwo
     
     // Store credentials offline
     await storeCredentialsOffline({
-      username,
-      password,
-      url: normalizedUrl,
-      user_agent: navigator.userAgent,
-      last_updated: new Date().toISOString()
+      ...credentialData,
+      id: 'local_credentials' // Use a consistent string ID for offline storage
     });
     
     return data;
@@ -90,7 +89,8 @@ export const getStoredCredentials = async () => {
     const { data, error } = await supabase
       .from('stream_credentials')
       .select('*')
-      .eq('id', '1') // Convert to string
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
     
     if (error) {

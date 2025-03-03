@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Settings } from 'lucide-react';
 import { toast } from 'sonner';
-import { authenticateXtream } from '@/services/iptvService';
+import { saveStreamCredentials } from '@/services/iptvService';
 
 const StreamCredentialsManager = () => {
   const [username, setUsername] = useState('');
@@ -19,11 +19,12 @@ const StreamCredentialsManager = () => {
     setIsLoading(true);
 
     try {
-      await authenticateXtream({ username, password, url });
+      await saveStreamCredentials({ username, password, url });
       toast.success('Stream credentials updated successfully');
       setOpen(false);
       window.location.reload(); // Reload to refresh the streams
     } catch (error) {
+      console.error('Credentials error:', error);
       toast.error('Failed to update stream credentials');
     } finally {
       setIsLoading(false);
