@@ -27,6 +27,58 @@ const storeChannelsInCache = async (channels: Channel[]): Promise<void> => {
   }
 };
 
+// Fetch programs for a specific channel
+export const fetchProgramsForChannel = async (channelId: string): Promise<EPGProgram[]> => {
+  try {
+    console.log(`Fetching programs for channel ${channelId}`);
+    // Try to fetch from Supabase first
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .eq('channel_id', channelId)
+      .order('start_time', { ascending: true });
+    
+    if (error) {
+      throw error;
+    }
+    
+    if (data && data.length > 0) {
+      console.log(`Found ${data.length} programs for channel ${channelId}`);
+      // Convert database format to EPGProgram format
+      const programs = data.map(item => ({
+        id: item.id,
+        channel: item.channel_id,
+        channel_id: item.channel_id,
+        title: item.title,
+        description: item.description,
+        startTime: item.start_time,
+        start_time: item.start_time,
+        endTime: item.end_time,
+        end_time: item.end_time,
+        category: item.category,
+        rating: item.rating,
+        thumbnail: item.thumbnail
+      }));
+      
+      // Store in cache
+      await storeProgramsInCache(programs);
+      return programs;
+    }
+    
+    // If no data from database, generate sample programs
+    console.log(`No programs found for channel ${channelId}, generating samples`);
+    const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
+    await storeProgramsInCache(samplePrograms);
+    return samplePrograms;
+  } catch (error) {
+    console.error(`Error fetching programs for channel ${channelId}:`, error);
+    // Generate sample programs as fallback
+    const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
+    await storeProgramsInCache(samplePrograms);
+    return samplePrograms;
+  }
+};
+
 // Get all channels with pagination
 export const getChannels = async (offset: number = 0, limit: number = 100): Promise<Channel[]> => {
   try {

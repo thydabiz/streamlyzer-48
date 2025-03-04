@@ -86,10 +86,10 @@ export const generateSampleChannels = (count: number = 10): Channel[] => {
     id: 'test',
     name: 'Test Stream',
     streamUrl: 'http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444',
-    category: 'Test',
-    epgChannelId: 'test',
     logo: null,
-    number: 0
+    number: 0,
+    epgChannelId: 'test',
+    category: 'Test'
   });
   
   // Add sample channels
@@ -98,10 +98,10 @@ export const generateSampleChannels = (count: number = 10): Channel[] => {
       id: `sample_${i}`,
       name: `Sample Channel ${i}`,
       streamUrl: 'http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444', // Use test URL for all sample channels
-      category: i % 4 === 0 ? 'News' : i % 3 === 0 ? 'Sports' : i % 2 === 0 ? 'Entertainment' : 'Movies',
-      epgChannelId: `sample_${i}`,
       logo: null,
-      number: i
+      number: i,
+      epgChannelId: `sample_${i}`,
+      category: i % 4 === 0 ? 'News' : i % 3 === 0 ? 'Sports' : i % 2 === 0 ? 'Entertainment' : 'Movies'
     });
   }
   

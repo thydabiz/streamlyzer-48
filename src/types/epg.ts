@@ -1,13 +1,13 @@
 
 export interface EPGProgram {
   id?: string;
-  channel_id?: string;
+  channel_id?: string; // For backward compatibility
   channel?: string;
   title: string;
   description: string;
-  start_time?: string;
+  start_time?: string; // For backward compatibility
   startTime: string;
-  end_time?: string;
+  end_time?: string; // For backward compatibility
   endTime: string;
   category: string;
   rating?: string;
@@ -21,5 +21,5 @@ export interface Channel {
   streamUrl: string;
   logo?: string | null;
   epgChannelId?: string;
-  category?: string;
+  category?: string; // Add category to Channel interface
 }

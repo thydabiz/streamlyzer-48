@@ -35,21 +35,23 @@ export const storeProgramsInCache = async (programs: EPGProgram[]): Promise<void
     
     // Add new programs
     for (const program of programs) {
-      if (!program.channel_id) continue;
+      if (!program.channel_id && !program.channel) continue;
       
-      if (!programsByChannel[program.channel_id]) {
-        programsByChannel[program.channel_id] = [];
+      const channelId = program.channel_id || program.channel;
+      
+      if (!programsByChannel[channelId]) {
+        programsByChannel[channelId] = [];
       }
       
       // Check if program already exists (avoid duplicates)
-      const exists = programsByChannel[program.channel_id].some(p => 
+      const exists = programsByChannel[channelId].some(p => 
         p.title === program.title && 
-        p.start_time === program.start_time && 
-        p.end_time === program.end_time
+        p.startTime === program.startTime && 
+        p.endTime === program.endTime
       );
       
       if (!exists) {
-        programsByChannel[program.channel_id].push(program);
+        programsByChannel[channelId].push(program);
       }
     }
     
@@ -74,9 +76,12 @@ export const getCurrentProgramForChannel = async (channelId: string): Promise<EP
       
       return {
         channel_id: channelId,
+        channel: channelId,
         title: `Current Program on ${channelId}`,
         description: `This is the current program for channel ${channelId}`,
+        startTime: start.toISOString(),
         start_time: start.toISOString(),
+        endTime: end.toISOString(),
         end_time: end.toISOString(),
         category: 'Live',
         rating: 'PG',
@@ -86,8 +91,8 @@ export const getCurrentProgramForChannel = async (channelId: string): Promise<EP
     
     // Find the program that is currently playing
     return programs.find(program => {
-      const startTime = new Date(program.start_time);
-      const endTime = new Date(program.end_time);
+      const startTime = new Date(program.startTime);
+      const endTime = new Date(program.endTime);
       return now >= startTime && now <= endTime;
     });
   } catch (error) {
@@ -127,7 +132,24 @@ export const getMovies = async ({
     
     if (data && data.length > 0) {
       console.log(`Found ${data.length} movies in database`);
-      return filterPrograms(data, search, categoryFilter, yearFilter, ratingFilter);
+      
+      // Convert database format to EPGProgram format
+      const programs = data.map(item => ({
+        id: item.id,
+        channel: item.channel_id,
+        channel_id: item.channel_id,
+        title: item.title,
+        description: item.description,
+        startTime: item.start_time,
+        start_time: item.start_time,
+        endTime: item.end_time,
+        end_time: item.end_time,
+        category: item.category,
+        rating: item.rating,
+        thumbnail: item.thumbnail
+      }));
+      
+      return filterPrograms(programs, search, categoryFilter, yearFilter, ratingFilter);
     }
     
     // No data from database, generate sample movies
@@ -176,7 +198,24 @@ export const getTVShows = async ({
     
     if (data && data.length > 0) {
       console.log(`Found ${data.length} TV shows in database`);
-      return filterPrograms(data, search, categoryFilter, yearFilter, ratingFilter);
+      
+      // Convert database format to EPGProgram format
+      const programs = data.map(item => ({
+        id: item.id,
+        channel: item.channel_id,
+        channel_id: item.channel_id,
+        title: item.title,
+        description: item.description,
+        startTime: item.start_time,
+        start_time: item.start_time,
+        endTime: item.end_time,
+        end_time: item.end_time,
+        category: item.category,
+        rating: item.rating,
+        thumbnail: item.thumbnail
+      }));
+      
+      return filterPrograms(programs, search, categoryFilter, yearFilter, ratingFilter);
     }
     
     // No data from database, generate sample TV shows
@@ -216,7 +255,7 @@ const filterPrograms = (
     
     // Year filter
     if (yearFilter) {
-      const programYear = new Date(program.start_time).getFullYear();
+      const programYear = new Date(program.startTime).getFullYear();
       if (programYear !== yearFilter) {
         return false;
       }
