@@ -25,6 +25,7 @@ const VideoPlayer = ({
   const [isPlaying, setIsPlaying] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [streamCheckFailed, setStreamCheckFailed] = useState(false);
+  const [adjustedUrl, setAdjustedUrl] = useState(url);
   const playerRef = useRef<ReactPlayer>(null);
   const retryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hlsInstanceRef = useRef<Hls | null>(null);
@@ -44,10 +45,11 @@ const VideoPlayer = ({
     };
   }, []);
 
-  // Check if HLS is supported and initialize with new URL
+  // Process URL when it changes to try alternative formats if needed
   useEffect(() => {
     if (url) {
-      console.log("Loading stream URL:", url);
+      console.log("Original stream URL:", url);
+      
       // Reset states for new URL
       setIsError(false);
       setHasRetried(false);
@@ -56,109 +58,68 @@ const VideoPlayer = ({
       setIsLoading(true);
       setIsReady(false);
       
-      // Check HLS support
-      if (!Hls.isSupported()) {
-        console.log("HLS not supported in this browser");
-        toast.error("Your browser doesn't support HLS playback. Please try a different browser.");
-        return;
+      // Try to normalize the URL for better compatibility
+      let processedUrl = url;
+      
+      // If URL doesn't have a protocol, try to add one
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        processedUrl = 'http://' + url;
       }
       
-      // Pre-validate the stream URL (check if it's accessible)
-      checkStreamAvailability(url);
-    }
-  }, [url]);
-
-  // Check if the stream URL is available and valid
-  const checkStreamAvailability = async (streamUrl: string) => {
-    try {
-      // Modern approach: Create a temporary HLS instance to validate the stream
-      if (Hls.isSupported()) {
-        // Destroy any existing instance
-        if (hlsInstanceRef.current) {
-          hlsInstanceRef.current.destroy();
+      // Update the URL to use
+      setAdjustedUrl(processedUrl);
+      
+      console.log("Using processed URL:", processedUrl);
+      
+      // Try alternative formats on error or after a delay
+      const tryAlternativeFormatTimer = setTimeout(() => {
+        if (isError || !isReady) {
+          console.log("Trying alternative format after delay");
+          if (processedUrl.endsWith('.m3u8')) {
+            // Try without m3u8 extension
+            setAdjustedUrl(processedUrl.replace('.m3u8', ''));
+          } else if (!processedUrl.endsWith('.m3u8')) {
+            // Add m3u8 extension if it doesn't have one
+            setAdjustedUrl(processedUrl + '.m3u8');
+          }
         }
-        
-        const tempHls = new Hls({
-          debug: false,
-          manifestLoadingTimeOut: 10000,
-          manifestLoadingMaxRetry: 1,
-          xhrSetup: (xhr) => {
-            xhr.withCredentials = false;
-          }
-        });
-        
-        hlsInstanceRef.current = tempHls;
-        
-        // Set up event listeners for validation
-        tempHls.once(Hls.Events.ERROR, (event, data) => {
-          console.log("Stream validation error:", data);
-          if (data.fatal) {
-            setStreamCheckFailed(true);
-            tempHls.destroy();
-            hlsInstanceRef.current = null;
-            
-            // Show appropriate error
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              toast.error("Stream not accessible. Try another channel.");
-            } else {
-              toast.error("Stream format issue. Try another channel.");
-            }
-          }
-        });
-        
-        tempHls.once(Hls.Events.MANIFEST_PARSED, () => {
-          console.log("Stream validation succeeded - manifest parsed");
-          // Stream is valid, clean up the temp instance
-          tempHls.destroy();
-          hlsInstanceRef.current = null;
-          setStreamCheckFailed(false);
-        });
-        
-        // Start validation
-        tempHls.loadSource(streamUrl);
-        tempHls.attachMedia(document.createElement('video'));
-      }
-    } catch (error) {
-      console.error("Error in stream validation:", error);
-      setStreamCheckFailed(true);
+      }, 8000);
+      
+      return () => {
+        clearTimeout(tryAlternativeFormatTimer);
+      };
     }
-  };
+  }, [url, isError, isReady]);
 
-  // Attempt to reload player when there's an error
+  // Handle playback errors and try alternative formats
   useEffect(() => {
-    if (isError && !hasRetried && playerRef.current) {
-      console.log("Attempting to reload player after error...");
+    if (isError && !hasRetried) {
+      console.log("Handling playback error, trying alternative formats...");
       
       // Clear any existing retry timer
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
       }
       
-      // Set a delay before retrying to allow network/resources to clear
+      // Set a delay before retrying
       retryTimerRef.current = setTimeout(() => {
-        console.log("Retrying playback...");
+        console.log("Retrying with alternative URL format...");
+        
+        // Try different URL format
+        let newUrl = adjustedUrl;
+        
+        if (adjustedUrl.endsWith('.m3u8')) {
+          newUrl = adjustedUrl.replace('.m3u8', '');
+        } else {
+          newUrl = adjustedUrl + '.m3u8';
+        }
+        
+        console.log("Retrying with URL:", newUrl);
+        setAdjustedUrl(newUrl);
         setIsError(false);
         setHasRetried(true);
         setIsLoading(true);
-        
-        // Force player to reload
-        if (playerRef.current) {
-          const player = playerRef.current.getInternalPlayer('hls');
-          if (player && typeof player.recoverMediaError === 'function') {
-            player.recoverMediaError();
-          }
-          
-          // Try to manually load the source
-          const videoElement = playerRef.current.getInternalPlayer();
-          if (videoElement) {
-            try {
-              videoElement.load();
-            } catch (e) {
-              console.log("Error reloading video element:", e);
-            }
-          }
-        }
-      }, 2000);
+      }, 3000);
       
       return () => {
         if (retryTimerRef.current) {
@@ -166,7 +127,7 @@ const VideoPlayer = ({
         }
       };
     }
-  }, [isError, hasRetried]);
+  }, [isError, hasRetried, adjustedUrl]);
 
   // Handle keyboard events for TV remote control
   useEffect(() => {
@@ -204,19 +165,10 @@ const VideoPlayer = ({
   const handleError = (error: any) => {
     console.error("Playback error:", error);
     setIsError(true);
-    setIsLoading(true);
+    setIsLoading(false);
     
     if (onError) {
       onError();
-    }
-    
-    // Provide more specific error messages based on error type
-    if (error && error.type === 'networkError') {
-      toast.error("Network error: Check your internet connection and try again.");
-    } else if (error && error.type === 'mediaError') {
-      toast.error("Media error: The stream format might be unsupported or corrupted.");
-    } else {
-      toast.error("Failed to load the video stream. Please try a different channel or refresh the page.");
     }
   };
 
@@ -236,55 +188,33 @@ const VideoPlayer = ({
 
   const manualRetry = () => {
     console.log("Manual retry initiated");
-    setIsError(false);
-    setHasRetried(false);
-    setStreamCheckFailed(false);
-    setIsLoading(true);
+    // Try a completely different approach on manual retry
+    let newUrl = adjustedUrl;
     
-    // Force reload the stream
-    if (playerRef.current) {
-      const player = playerRef.current.getInternalPlayer();
-      if (player) {
-        try {
-          player.load();
-          setIsPlaying(true);
-        } catch (e) {
-          console.error("Error during manual retry:", e);
-        }
+    // Alternate between formats
+    if (hasRetried) {
+      // If we've already retried, try with http/https swap
+      if (newUrl.startsWith('https://')) {
+        newUrl = 'http://' + newUrl.substring(8);
+      } else if (newUrl.startsWith('http://')) {
+        newUrl = 'https://' + newUrl.substring(7);
+      }
+    } else {
+      // First retry: toggle m3u8 extension
+      if (newUrl.endsWith('.m3u8')) {
+        newUrl = newUrl.replace('.m3u8', '');
+      } else {
+        newUrl = newUrl + '.m3u8';
       }
     }
+    
+    console.log("Manual retry with URL:", newUrl);
+    setAdjustedUrl(newUrl);
+    setIsError(false);
+    setHasRetried(true);
+    setStreamCheckFailed(false);
+    setIsLoading(true);
   };
-
-  // If initial stream check failed, show early error
-  if (streamCheckFailed && !isFullscreen) {
-    return (
-      <div className="rounded-lg overflow-hidden glass">
-        {title && (
-          <div className="p-4 bg-black/50">
-            <h3 className="text-lg font-semibold">{title}</h3>
-          </div>
-        )}
-        <div className="p-8 bg-gray-900 flex flex-col items-center justify-center">
-          <div className="text-red-400 mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-          </div>
-          <p className="text-center text-white mb-4">
-            This stream is unavailable or cannot be accessed
-          </p>
-          <button 
-            onClick={manualRetry}
-            className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={`rounded-lg overflow-hidden glass ${isFullscreen ? 'h-full' : ''}`}>
@@ -299,7 +229,7 @@ const VideoPlayer = ({
       >
         <ReactPlayer
           ref={playerRef}
-          url={url}
+          url={adjustedUrl}
           width="100%"
           height={isFullscreen ? "100%" : "100%"}
           playing={isPlaying}
@@ -315,40 +245,34 @@ const VideoPlayer = ({
               forceHLS: true,
               forceVideo: true,
               attributes: {
-                // Add crossorigin attribute to help with CORS issues
                 crossOrigin: "anonymous",
-                // Improve mobile playback
                 playsInline: true,
-                // Auto quality adaptation
                 autoQuality: true
               },
               hlsOptions: {
-                // Enhance HLS options for better reliability
                 enableWorker: true,
-                debug: true, // Enable debug mode for HLS.js to get more logs
-                fragLoadingTimeOut: 20000, // Reduced from 60000 for faster error detection
-                manifestLoadingTimeOut: 20000, // Reduced from 60000 for faster error detection
-                levelLoadingTimeOut: 20000, // Reduced from 60000 for faster error detection
-                fragLoadingMaxRetry: 3, // Reduced from 8 for faster error recovery
-                manifestLoadingMaxRetry: 3, // Reduced from 8 for faster error recovery
-                levelLoadingMaxRetry: 3, // Reduced from 8 for faster error recovery
-                maxBufferLength: 30, // Reduced from 60 for faster start
-                maxMaxBufferLength: 60, // Reduced from 600 to prevent excessive buffering
-                maxBufferSize: 30 * 1000 * 1000, // Reduced from 60MB to improve performance
+                debug: false, // Disable debug to reduce console noise
+                fragLoadingTimeOut: 8000, // Reduced for faster error detection
+                manifestLoadingTimeOut: 8000, // Reduced for faster error detection
+                levelLoadingTimeOut: 8000, // Reduced for faster error detection
+                fragLoadingMaxRetry: 2, // Reduced for faster error recovery
+                manifestLoadingMaxRetry: 2, // Reduced for faster error recovery
+                levelLoadingMaxRetry: 2, // Reduced for faster error recovery
+                maxBufferLength: 15, // Reduced for faster start
+                maxMaxBufferLength: 30, // Reduced to prevent excessive buffering
+                maxBufferSize: 15 * 1000 * 1000, // Reduced from 60MB to improve performance
                 startLevel: -1, // Auto quality level
                 autoStartLoad: true,
                 liveSyncDurationCount: 3,
-                liveMaxLatencyDurationCount: 6, // Reduced from 10 for less latency
+                liveMaxLatencyDurationCount: 6, // For less latency
                 liveDurationInfinity: true, // For live streams
-                // Recovery options
                 enableSoftwareAES: true,
-                lowLatencyMode: true, // Added for better live streaming
-                backBufferLength: 30, // Reduced for better live performance
-                progressive: true, // Try to use progressive loading when possible
-                // CORS options
+                lowLatencyMode: true,
+                backBufferLength: 15,
+                progressive: true,
                 xhrSetup: (xhr: XMLHttpRequest) => {
                   xhr.withCredentials = false;
-                  xhr.timeout = 20000; // Add a timeout for XHR requests
+                  xhr.timeout = 8000; // Shorter timeout
                 }
               },
             },
