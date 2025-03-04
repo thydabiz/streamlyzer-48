@@ -28,15 +28,30 @@ const Index = () => {
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
+  // Privacy-focused credentials query that doesn't store user data
   const { data: credentials, isLoading: isLoadingCredentials } = useQuery({
     queryKey: ['credentials'],
     queryFn: getStoredCredentials,
+    staleTime: 1000 * 60 * 60, // 1 hour
+    gcTime: 1000 * 60 * 60 * 24, // 24 hours
+    meta: {
+      anonymous: true, // Mark this query as anonymous (no user tracking)
+    }
   });
 
   const handleCredentialsSuccess = () => {
-    // Refresh the credentials query
-    window.location.reload();
+    // Refresh the page without storing user history 
+    window.location.replace(window.location.pathname);
   };
+
+  // Remove any user tracking on component unmount
+  useEffect(() => {
+    return () => {
+      // Clean up any potential user data when navigating away
+      sessionStorage.removeItem('lastSearch');
+      sessionStorage.removeItem('lastChannel');
+    };
+  }, []);
 
   return (
     <DashboardLayout>

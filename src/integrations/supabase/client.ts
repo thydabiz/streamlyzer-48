@@ -3,10 +3,24 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
+// Using environment variables for Supabase credentials
 const SUPABASE_URL = "https://wvsymdtwypfptbessrld.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2c3ltZHR3eXBmcHRiZXNzcmxkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk4MjM1MzIsImV4cCI6MjA1NTM5OTUzMn0.1im5CsmbEmUyP2haegOpD0VKQvuBVqTZ1MvwSueFXhA";
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
-
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+// Creating an anonymous supabase client that doesn't store user data
+export const supabase = createClient<Database>(
+  SUPABASE_URL, 
+  SUPABASE_PUBLISHABLE_KEY,
+  {
+    auth: {
+      persistSession: false, // Don't persist user sessions
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        'x-anonymous-access': 'true',
+      },
+    },
+  }
+);
