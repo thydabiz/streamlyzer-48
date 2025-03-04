@@ -136,7 +136,7 @@ const VideoPlayer = ({
             "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444.m3u8"
           ];
           
-          // Fix: Select a single URL instead of passing the array
+          // Select the first URL from the array
           const newUrl = alternativeFormats[0];
           console.log("Retrying test URL with alternative format:", newUrl);
           setAdjustedUrl(newUrl);
