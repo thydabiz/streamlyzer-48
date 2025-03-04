@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 import Hls from 'hls.js';
@@ -136,7 +135,6 @@ const VideoPlayer = ({
             "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444.m3u8"
           ];
           
-          // Select the first URL from the array
           const newUrl = alternativeFormats[0];
           console.log("Retrying test URL with alternative format:", newUrl);
           setAdjustedUrl(newUrl);
