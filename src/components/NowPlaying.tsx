@@ -55,24 +55,54 @@ const NowPlaying = ({ channel, currentProgram, programSchedule, onLoadSchedule }
     };
   }, []);
 
+  // Determine stream URL - use test URL if specified or fall back to channel stream URL
+  const streamUrl = channel.id === 'test' 
+    ? "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444"
+    : channel.streamUrl;
+
   return (
     <section className={isFullscreen ? 'fixed inset-0 z-50 bg-black' : ''}>
       {!isFullscreen && (
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-semibold">Now Playing</h2>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={toggleFullscreen}
-            className="text-xs"
-          >
-            Fullscreen
-          </Button>
+          <div className="flex space-x-2">
+            {channel.id !== 'test' && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  // Create a temporary test channel
+                  const testChannel: Channel = {
+                    ...channel,
+                    id: 'test',
+                    name: 'Test Channel',
+                    streamUrl: "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444"
+                  };
+                  
+                  // Navigate to test channel
+                  navigate('/', { 
+                    state: { selectedChannel: testChannel } 
+                  });
+                }}
+                className="text-xs"
+              >
+                Test Stream
+              </Button>
+            )}
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={toggleFullscreen}
+              className="text-xs"
+            >
+              Fullscreen
+            </Button>
+          </div>
         </div>
       )}
       
       <VideoPlayer 
-        url={channel.streamUrl} 
+        url={streamUrl}
         title={`${channel.name} - ${currentProgram?.title || 'No Program Info'}`}
         isFullscreen={isFullscreen}
         onFullscreenToggle={toggleFullscreen}
