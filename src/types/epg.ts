@@ -1,14 +1,17 @@
 
 export interface EPGProgram {
-  id: string;
+  id?: string;
+  channel_id?: string;
+  channel?: string;
   title: string;
   description: string;
+  start_time?: string;
   startTime: string;
+  end_time?: string;
   endTime: string;
   category: string;
-  channel: string;
   rating?: string;
-  thumbnail?: string;
+  thumbnail?: string | null;
 }
 
 export interface Channel {
@@ -16,5 +19,7 @@ export interface Channel {
   name: string;
   number: number;
   streamUrl: string;
-  logo?: string;
+  logo?: string | null;
+  epgChannelId?: string;
+  category?: string;
 }

@@ -31,7 +31,7 @@ const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Movi
       const offset = pageIndex * BATCH_SIZE;
       console.log(`Fetching movies batch: page ${pageIndex}, offset ${offset}`);
       
-      const data = await getMovies(offset, BATCH_SIZE);
+      const data = await getMovies(offset);
       console.log(`Received ${data.length} movies for page ${pageIndex}`);
       
       if (data.length === 0) {
@@ -89,16 +89,14 @@ const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Movi
   const handleRefreshData = async () => {
     setRefreshing(true);
     try {
-      const success = await refreshEPGData();
-      if (success) {
-        // Reset and reload movies after successful EPG refresh
-        setMovies([]);
-        setPage(0);
-        setHasMore(true);
-        const data = await getMovies(0, BATCH_SIZE);
-        setMovies(data);
-        toast.success(`Loaded ${data.length} movies after refresh`);
-      }
+      await refreshEPGData();
+      // Reset and reload movies after successful EPG refresh
+      setMovies([]);
+      setPage(0);
+      setHasMore(true);
+      const data = await getMovies(0);
+      setMovies(data);
+      toast.success(`Loaded ${data.length} movies after refresh`);
     } catch (error) {
       console.error("Failed to refresh movie data:", error);
       toast.error("Failed to refresh movie data");
@@ -180,7 +178,7 @@ const Movies = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Movi
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filteredMovies.map((movie) => (
               <button
-                key={movie.id}
+                key={movie.id || `${movie.title}-${movie.startTime}`}
                 className="group relative aspect-[2/3] rounded-lg overflow-hidden focus:ring-4 focus:ring-white/20 focus:outline-none"
               >
                 {movie.thumbnail ? (

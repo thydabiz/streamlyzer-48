@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 import Hls from 'hls.js';
@@ -30,14 +29,12 @@ const VideoPlayer = ({
   const retryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hlsInstanceRef = useRef<Hls | null>(null);
 
-  // Clear any existing timers when component unmounts
   useEffect(() => {
     return () => {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
       }
       
-      // Cleanup any HLS instance
       if (hlsInstanceRef.current) {
         hlsInstanceRef.current.destroy();
         hlsInstanceRef.current = null;
@@ -45,12 +42,10 @@ const VideoPlayer = ({
     };
   }, []);
 
-  // Process URL when it changes
   useEffect(() => {
     if (url) {
       console.log("Original stream URL:", url);
       
-      // Reset states for new URL
       setIsError(false);
       setHasRetried(false);
       setIsPlaying(true);
@@ -58,29 +53,22 @@ const VideoPlayer = ({
       setIsReady(false);
       setDirectPlaybackUrl("");
       
-      // Try to normalize the URL for better compatibility
       let processedUrl = url;
       
-      // If URL doesn't have a protocol, try to add one
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         processedUrl = 'http://' + url;
       }
       
-      // Check if the URL is the specific test URL
       if (url === "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444") {
-        // For this specific URL, we'll ensure we're using the direct format
         processedUrl = url;
         console.log("Using test URL in direct format:", processedUrl);
       }
       
-      // Update the URL to use
       setAdjustedUrl(processedUrl);
       
-      // Pre-validate stream using HLS.js for HLS streams
       if (Hls.isSupported() && processedUrl.includes('/live/')) {
         console.log("Attempting to pre-validate HLS stream:", processedUrl);
         
-        // Clean up any existing HLS instance
         if (hlsInstanceRef.current) {
           hlsInstanceRef.current.destroy();
           hlsInstanceRef.current = null;
@@ -89,20 +77,17 @@ const VideoPlayer = ({
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
-          fragLoadingTimeOut: 5000, // Shorter timeout for faster failure detection
+          fragLoadingTimeOut: 5000,
           manifestLoadingTimeOut: 5000
         });
         
         hlsInstanceRef.current = hls;
         
-        // Attempt to load the stream to check if it's valid
         hls.loadSource(processedUrl);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           console.log("HLS stream pre-validation succeeded");
           
-          // Get the direct URL from the loaded manifest if possible
           if (hls.levels && hls.levels.length > 0) {
-            // Use highest quality level URL
             const highestLevel = hls.levels[hls.levels.length - 1];
             if (highestLevel && highestLevel.url) {
               setDirectPlaybackUrl(highestLevel.url);
@@ -110,7 +95,6 @@ const VideoPlayer = ({
             }
           }
           
-          // Clean up this validation instance
           hls.destroy();
           hlsInstanceRef.current = null;
         });
@@ -121,9 +105,7 @@ const VideoPlayer = ({
             hls.destroy();
             hlsInstanceRef.current = null;
             
-            // If this is the test URL, try an alternative format
             if (url === "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444") {
-              // Try alternative direct format
               const alternativeUrl = "http://lion.topcms.cc:80/vC8q5551/r6Vf5130/469444";
               console.log("Trying alternative format for test URL:", alternativeUrl);
               setAdjustedUrl(alternativeUrl);
@@ -134,21 +116,17 @@ const VideoPlayer = ({
     }
   }, [url]);
 
-  // Handle playback errors and try alternative formats
   useEffect(() => {
     if (isError && !hasRetried) {
       console.log("Handling playback error, trying alternative formats...");
       
-      // Clear any existing retry timer
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
       }
       
-      // Set a delay before retrying
       retryTimerRef.current = setTimeout(() => {
         console.log("Retrying with alternative URL format...");
         
-        // For test URL, try specific formats known to work
         if (url === "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444") {
           const alternativeFormats = [
             "http://lion.topcms.cc:80/vC8q5551/r6Vf5130/469444",
@@ -157,21 +135,18 @@ const VideoPlayer = ({
             "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444.m3u8"
           ];
           
-          const newUrl = alternativeFormats[0]; // Try first alternative
+          const newUrl = alternativeFormats[0];
           console.log("Retrying test URL with alternative format:", newUrl);
           setAdjustedUrl(newUrl);
         } else {
-          // Try different URL formats for other streams
           let newUrl = adjustedUrl;
           
-          // Try with and without m3u8 extension
           if (adjustedUrl.endsWith('.m3u8')) {
             newUrl = adjustedUrl.replace('.m3u8', '');
           } else if (!adjustedUrl.endsWith('.m3u8') && !adjustedUrl.endsWith('.ts')) {
             newUrl = adjustedUrl + '.m3u8';
           }
           
-          // Also try with port 80 explicitly if not already specified
           if (!newUrl.includes(':80/') && newUrl.startsWith('http://')) {
             const urlParts = newUrl.split('//');
             if (urlParts.length > 1) {
@@ -189,7 +164,7 @@ const VideoPlayer = ({
         setIsError(false);
         setHasRetried(true);
         setIsLoading(true);
-      }, 1000); // Faster retry (1 second)
+      }, 1000);
       
       return () => {
         if (retryTimerRef.current) {
@@ -199,15 +174,11 @@ const VideoPlayer = ({
     }
   }, [isError, hasRetried, adjustedUrl, url]);
 
-  // Handle keyboard events for TV remote control
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Space or Enter for play/pause
       if (e.key === ' ' || e.key === 'Enter') {
         setIsPlaying(!isPlaying);
-      }
-      // F key or F11 for fullscreen
-      else if (e.key === 'f' || e.key === 'F' || e.key === 'F11') {
+      } else if (e.key === 'f' || e.key === 'F' || e.key === 'F11') {
         onFullscreenToggle?.();
       }
     };
@@ -224,7 +195,6 @@ const VideoPlayer = ({
     setIsError(false);
     setIsLoading(false);
     
-    // Show success toast for test URL
     if (url === "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444") {
       toast.success("Test stream loaded successfully!");
     }
@@ -244,7 +214,6 @@ const VideoPlayer = ({
       onError();
     }
     
-    // Show specific error for test URL
     if (url === "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444") {
       console.log("Test URL failed, will try alternative formats");
     }
@@ -267,7 +236,6 @@ const VideoPlayer = ({
   const manualRetry = () => {
     console.log("Manual retry initiated");
     
-    // For test URL, cycle through alternative formats
     if (url === "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444") {
       const alternativeFormats = [
         "http://lion.topcms.cc:80/vC8q5551/r6Vf5130/469444",
@@ -276,7 +244,6 @@ const VideoPlayer = ({
         "http://lion.topcms.cc/live/vC8q5551/r6Vf5130/469444.m3u8"
       ];
       
-      // Find current format in the array and move to the next one
       const currentIndex = alternativeFormats.indexOf(adjustedUrl);
       const nextIndex = (currentIndex + 1) % alternativeFormats.length;
       const newUrl = alternativeFormats[nextIndex];
@@ -284,19 +251,15 @@ const VideoPlayer = ({
       console.log(`Trying format ${nextIndex + 1}/${alternativeFormats.length}: ${newUrl}`);
       setAdjustedUrl(newUrl);
     } else {
-      // Standard alternating approach for other URLs
       let newUrl = adjustedUrl;
       
-      // First try: toggle m3u8 extension
       if (hasRetried) {
-        // Second retry: try with http/https swap
         if (newUrl.startsWith('https://')) {
           newUrl = 'http://' + newUrl.substring(8);
         } else if (newUrl.startsWith('http://')) {
           newUrl = 'https://' + newUrl.substring(7);
         }
       } else {
-        // First retry: toggle m3u8 extension
         if (newUrl.endsWith('.m3u8')) {
           newUrl = newUrl.replace('.m3u8', '');
         } else {
@@ -313,7 +276,6 @@ const VideoPlayer = ({
     setIsLoading(true);
   };
 
-  // Determine which URL to use - direct playback URL if available, otherwise adjusted URL
   const effectiveUrl = directPlaybackUrl || adjustedUrl;
 
   return (
@@ -333,7 +295,7 @@ const VideoPlayer = ({
           width="100%"
           height={isFullscreen ? "100%" : "100%"}
           playing={isPlaying}
-          controls={!isFullscreen} // Hide default controls in fullscreen mode
+          controls={!isFullscreen}
           onReady={handleReady}
           onStart={handleStart}
           onError={handleError}
@@ -351,28 +313,28 @@ const VideoPlayer = ({
               },
               hlsOptions: {
                 enableWorker: true,
-                debug: false, // Disable debug to reduce console noise
-                fragLoadingTimeOut: 8000, // Reduced for faster error detection
-                manifestLoadingTimeOut: 8000, // Reduced for faster error detection
-                levelLoadingTimeOut: 8000, // Reduced for faster error detection
-                fragLoadingMaxRetry: 2, // Reduced for faster error recovery
-                manifestLoadingMaxRetry: 2, // Reduced for faster error recovery
-                levelLoadingMaxRetry: 2, // Reduced for faster error recovery
-                maxBufferLength: 15, // Reduced for faster start
-                maxMaxBufferLength: 30, // Reduced to prevent excessive buffering
-                maxBufferSize: 15 * 1000 * 1000, // Reduced from 60MB to improve performance
-                startLevel: -1, // Auto quality level
+                debug: false,
+                fragLoadingTimeOut: 8000,
+                manifestLoadingTimeOut: 8000,
+                levelLoadingTimeOut: 8000,
+                fragLoadingMaxRetry: 2,
+                manifestLoadingMaxRetry: 2,
+                levelLoadingMaxRetry: 2,
+                maxBufferLength: 15,
+                maxMaxBufferLength: 30,
+                maxBufferSize: 15 * 1000 * 1000,
+                startLevel: -1,
                 autoStartLoad: true,
                 liveSyncDurationCount: 3,
-                liveMaxLatencyDurationCount: 6, // For less latency
-                liveDurationInfinity: true, // For live streams
+                liveMaxLatencyDurationCount: 6,
+                liveDurationInfinity: true,
                 enableSoftwareAES: true,
                 lowLatencyMode: true,
                 backBufferLength: 15,
                 progressive: true,
                 xhrSetup: (xhr: XMLHttpRequest) => {
                   xhr.withCredentials = false;
-                  xhr.timeout = 8000; // Shorter timeout
+                  xhr.timeout = 8000;
                 }
               },
             },
@@ -383,14 +345,12 @@ const VideoPlayer = ({
           }}
         />
         
-        {/* Loading spinner overlay */}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
           </div>
         )}
         
-        {/* Custom controls for fullscreen mode (TV-friendly) */}
         {isFullscreen && !isLoading && (
           <div 
             className="absolute inset-0 flex items-center justify-center cursor-pointer"

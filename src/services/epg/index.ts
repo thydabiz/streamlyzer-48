@@ -1,10 +1,31 @@
 
-import { getChannelsFromCache, storeChannelsInCache } from './channelService';
-import { getProgramsFromCache, storeProgramsInCache, getCurrentProgramForChannel } from './programService';
-import { refreshEPGDataFromAPI } from './epgRefreshService';
+import { supabase } from '@/integrations/supabase/client';
 import { Channel, EPGProgram } from '@/types/epg';
+import localforage from 'localforage';
+import { refreshEPGData } from './epgRefreshService';
 import { generateSampleChannels, generateSampleMovies, generateSampleTVShows } from '../sampleDataService';
 import { toast } from 'sonner';
+
+const CHANNELS_CACHE_KEY = 'epg_channels';
+
+// Get channels from cache
+const getChannelsFromCache = async (): Promise<Channel[]> => {
+  try {
+    return await localforage.getItem<Channel[]>(CHANNELS_CACHE_KEY) || [];
+  } catch (error) {
+    console.error('Error getting channels from cache:', error);
+    return [];
+  }
+};
+
+// Store channels in cache
+const storeChannelsInCache = async (channels: Channel[]): Promise<void> => {
+  try {
+    await localforage.setItem(CHANNELS_CACHE_KEY, channels);
+  } catch (error) {
+    console.error('Error storing channels in cache:', error);
+  }
+};
 
 // Get all channels with pagination
 export const getChannels = async (offset: number = 0, limit: number = 100): Promise<Channel[]> => {
@@ -35,7 +56,7 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
     
     if (programs && programs.length > 0) {
       return programs.sort((a, b) => 
-        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
       );
     }
     
@@ -50,24 +71,58 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
   }
 };
 
-// Fetch programs for a specific channel
-export const fetchProgramsForChannel = async (channelId: string): Promise<EPGProgram[]> => {
+// Get programs from cache for a specific channel
+const getProgramsFromCache = async (channelId: string): Promise<EPGProgram[]> => {
   try {
-    // Try to get from cache first
-    const programs = await getProgramsFromCache(channelId);
+    const programs = await localforage.getItem<Record<string, EPGProgram[]>>('epg_programs') || {};
+    return programs[channelId] || [];
+  } catch (error) {
+    console.error('Error getting programs from cache:', error);
+    return [];
+  }
+};
+
+// Store programs in cache
+const storeProgramsInCache = async (programs: EPGProgram[]): Promise<void> => {
+  try {
+    if (!programs || programs.length === 0) return;
     
-    if (programs && programs.length > 0) {
-      return programs;
+    // Group programs by channel
+    const programsByChannel: Record<string, EPGProgram[]> = {};
+    
+    // Get existing programs first
+    const existingPrograms = await localforage.getItem<Record<string, EPGProgram[]>>('epg_programs') || {};
+    
+    // Merge with existing programs
+    for (const channel in existingPrograms) {
+      programsByChannel[channel] = [...existingPrograms[channel]];
     }
     
-    // Generate sample programs
-    const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
-    await storeProgramsInCache(samplePrograms);
-    return samplePrograms;
+    // Add new programs
+    for (const program of programs) {
+      if (!program.channel_id && !program.channel) continue;
+      
+      const channelId = program.channel_id || program.channel;
+      
+      if (!programsByChannel[channelId]) {
+        programsByChannel[channelId] = [];
+      }
+      
+      // Check if program already exists (avoid duplicates)
+      const exists = programsByChannel[channelId].some(p => 
+        p.title === program.title && 
+        p.startTime === program.startTime && 
+        p.endTime === program.endTime
+      );
+      
+      if (!exists) {
+        programsByChannel[channelId].push(program);
+      }
+    }
+    
+    await localforage.setItem('epg_programs', programsByChannel);
   } catch (error) {
-    console.error('Error fetching programs for channel:', error);
-    const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
-    return samplePrograms;
+    console.error('Error storing programs in cache:', error);
   }
 };
 
@@ -86,10 +141,14 @@ const generateSampleProgramsForChannel = (channelId: string, count: number = 10)
     endTime.setHours(endTime.getHours() + 3); // 3-hour programs
     
     const program: EPGProgram = {
+      id: `prog_${channelId}_${i}`,
+      channel: channelId,
       channel_id: channelId,
       title: `Program ${i + 1} on ${channelId}`,
       description: `This is a sample program ${i + 1} for channel ${channelId}`,
+      startTime: startTime.toISOString(),
       start_time: startTime.toISOString(),
+      endTime: endTime.toISOString(),
       end_time: endTime.toISOString(),
       category: i % 3 === 0 ? 'Movie' : i % 2 === 0 ? 'Series' : 'News',
       rating: 'PG',
@@ -105,50 +164,137 @@ const generateSampleProgramsForChannel = (channelId: string, count: number = 10)
 // Get current program for a channel
 export const getCurrentProgram = async (channelId: string): Promise<EPGProgram | undefined> => {
   try {
-    return await getCurrentProgramForChannel(channelId);
-  } catch (error) {
-    console.error('Error getting current program:', error);
-    // Generate a sample current program
     const now = new Date();
-    const start = new Date(now);
-    start.setHours(start.getHours() - 1);
-    const end = new Date(now);
-    end.setHours(end.getHours() + 1);
+    const programs = await getProgramsFromCache(channelId);
     
-    return {
-      channel_id: channelId,
-      title: `Current Program on ${channelId}`,
-      description: `This is the current program for channel ${channelId}`,
-      start_time: start.toISOString(),
-      end_time: end.toISOString(),
-      category: 'Live',
-      rating: 'PG',
-      thumbnail: null
-    };
+    if (programs.length === 0) {
+      // No programs found, return a generated current program
+      const start = new Date(now);
+      start.setHours(start.getHours() - 1);
+      const end = new Date(now);
+      end.setHours(end.getHours() + 1);
+      
+      return {
+        id: `current_${channelId}`,
+        channel: channelId,
+        channel_id: channelId,
+        title: `Current Program on ${channelId}`,
+        description: `This is the current program for channel ${channelId}`,
+        startTime: start.toISOString(),
+        start_time: start.toISOString(),
+        endTime: end.toISOString(),
+        end_time: end.toISOString(),
+        category: 'Live',
+        rating: 'PG',
+        thumbnail: null
+      };
+    }
+    
+    // Find the program that is currently playing
+    return programs.find(program => {
+      const startTime = new Date(program.startTime);
+      const endTime = new Date(program.endTime);
+      return now >= startTime && now <= endTime;
+    });
+  } catch (error) {
+    console.error('Error getting current program for channel:', error);
+    return undefined;
+  }
+};
+
+// Get movies from the service
+export const getMovies = async (offset: number = 0, limit: number = 100): Promise<EPGProgram[]> => {
+  try {
+    // Try to fetch from database first
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .ilike('category', '%movie%')
+      .order('start_time', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) {
+      throw error;
+    }
+    
+    if (data && data.length > 0) {
+      console.log(`Found ${data.length} movies in database`);
+      // Convert database format to EPGProgram format
+      return data.map(item => ({
+        id: item.id,
+        channel: item.channel_id,
+        channel_id: item.channel_id,
+        title: item.title,
+        description: item.description,
+        startTime: item.start_time,
+        start_time: item.start_time,
+        endTime: item.end_time,
+        end_time: item.end_time,
+        category: item.category,
+        rating: item.rating,
+        thumbnail: item.thumbnail
+      }));
+    }
+    
+    // No data from database, generate sample movies
+    console.log('Generating sample movies');
+    const sampleMovies = generateSampleMovies(100);
+    return sampleMovies.slice(offset, offset + limit);
+    
+  } catch (error) {
+    console.error('Error fetching movies:', error);
+    // Generate sample movies as fallback
+    const sampleMovies = generateSampleMovies(100);
+    return sampleMovies.slice(offset, offset + limit);
+  }
+};
+
+// Get TV shows from the service
+export const getTVShows = async (offset: number = 0, limit: number = 100): Promise<EPGProgram[]> => {
+  try {
+    // Try to fetch from database first
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .ilike('category', '%series%')
+      .order('start_time', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) {
+      throw error;
+    }
+    
+    if (data && data.length > 0) {
+      console.log(`Found ${data.length} TV shows in database`);
+      // Convert database format to EPGProgram format
+      return data.map(item => ({
+        id: item.id,
+        channel: item.channel_id,
+        channel_id: item.channel_id,
+        title: item.title,
+        description: item.description,
+        startTime: item.start_time,
+        start_time: item.start_time,
+        endTime: item.end_time,
+        end_time: item.end_time,
+        category: item.category,
+        rating: item.rating,
+        thumbnail: item.thumbnail
+      }));
+    }
+    
+    // No data from database, generate sample TV shows
+    console.log('Generating sample TV shows');
+    const sampleShows = generateSampleTVShows(100);
+    return sampleShows.slice(offset, offset + limit);
+    
+  } catch (error) {
+    console.error('Error fetching TV shows:', error);
+    // Generate sample TV shows as fallback
+    const sampleShows = generateSampleTVShows(100);
+    return sampleShows.slice(offset, offset + limit);
   }
 };
 
 // Refresh EPG data
-export const refreshEPGData = async (): Promise<void> => {
-  try {
-    toast.info("Refreshing EPG data...");
-    await refreshEPGDataFromAPI();
-    toast.success("EPG data refreshed successfully");
-  } catch (error) {
-    console.error('Error refreshing EPG data:', error);
-    // Generate and store sample data as a fallback
-    const sampleChannels = generateSampleChannels(50);
-    await storeChannelsInCache(sampleChannels);
-    
-    const sampleMovies = generateSampleMovies(100);
-    await storeProgramsInCache(sampleMovies);
-    
-    const sampleShows = generateSampleTVShows(100);
-    await storeProgramsInCache(sampleShows);
-    
-    toast.success("Generated sample data since API refresh failed");
-  }
-};
-
-// Export other functions
-export { getMovies, getTVShows } from './programService';
+export { refreshEPGData } from './epgRefreshService';

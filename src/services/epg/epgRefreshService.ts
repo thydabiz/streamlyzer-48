@@ -3,7 +3,45 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getStoredCredentials } from '../iptvService';
 import { storeEPGPrograms } from './epgStorageService';
-import { getChannels } from './channelService';
+import { getChannels } from '../epg';
+
+// Helper function to fetch programs for a specific channel
+const fetchProgramsForChannel = async (channelId: string): Promise<boolean> => {
+  try {
+    const credentials = await getStoredCredentials();
+    if (!credentials) {
+      console.error('No stream credentials found');
+      return false;
+    }
+
+    const { data: response, error } = await supabase.functions.invoke('xtream-auth', {
+      body: {
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password,
+        action: 'get_epg_for_channel',
+        channel_id: channelId
+      }
+    });
+
+    if (error) {
+      console.error(`Failed to fetch programs for channel ${channelId}:`, error);
+      return false;
+    }
+
+    if (response?.success && Array.isArray(response.data) && response.data.length > 0) {
+      console.log(`Successfully fetched ${response.data.length} programs for channel ${channelId}`);
+      await storeEPGPrograms(response.data);
+      return true;
+    } else {
+      console.log(`No programs found for channel ${channelId}`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`Error fetching programs for channel ${channelId}:`, error);
+    return false;
+  }
+};
 
 export const refreshEPGData = async () => {
   console.log('Starting EPG refresh...');
@@ -217,12 +255,17 @@ const generateSampleEPGData = () => {
         }
         
         programs.push({
+          id: `${channel}_${day}_${hour}`,
           channel_id: channel,
+          channel: channel,
           title: title,
           description: `Sample program description for ${title}`,
+          startTime: startTime.toISOString(),
           start_time: startTime.toISOString(),
+          endTime: endTime.toISOString(),
           end_time: endTime.toISOString(),
-          category: category
+          category: category,
+          rating: hour % 4 === 0 ? 'PG' : hour % 3 === 0 ? 'PG-13' : hour % 2 === 0 ? 'R' : 'G'
         });
       }
     }
@@ -272,19 +315,20 @@ const generateSampleEPGDataForChannel = (channelId: string) => {
       }
       
       programs.push({
+        id: `${channelId}_${day}_${hour}`,
         channel_id: channelId,
+        channel: channelId,
         title: title,
         description: `Sample program description for ${title}`,
+        startTime: startTime.toISOString(),
         start_time: startTime.toISOString(),
+        endTime: endTime.toISOString(),
         end_time: endTime.toISOString(),
-        category: category
+        category: category,
+        rating: hour % 4 === 0 ? 'PG' : hour % 3 === 0 ? 'PG-13' : hour % 2 === 0 ? 'R' : 'G'
       });
     }
   }
   
   return programs;
 };
-
-// Import at the end to avoid circular dependencies
-import { fetchProgramsForChannel } from './programService';
-

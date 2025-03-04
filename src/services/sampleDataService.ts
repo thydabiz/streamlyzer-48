@@ -21,10 +21,14 @@ export const generateSampleMovies = (count: number = 20): EPGProgram[] => {
     const ratingIndex = Math.floor(Math.random() * ratings.length);
     
     movies.push({
+      id: `movie_${i}`,
+      channel: `movie_${i}`,
       channel_id: `movie_${i}`,
       title: `Sample Movie ${i}: ${categories[categoryIndex]} Adventure`,
       description: `This is a sample movie in the ${categories[categoryIndex]} genre created because the API data couldn't be loaded.`,
+      startTime: startDate.toISOString(),
       start_time: startDate.toISOString(),
+      endTime: endDate.toISOString(),
       end_time: endDate.toISOString(),
       category: `Movie - ${categories[categoryIndex]}`,
       rating: ratings[ratingIndex],
@@ -55,10 +59,14 @@ export const generateSampleTVShows = (count: number = 20): EPGProgram[] => {
     const ratingIndex = Math.floor(Math.random() * ratings.length);
     
     shows.push({
+      id: `show_${i}`,
+      channel: `show_${i}`,
       channel_id: `show_${i}`,
       title: `Sample Show ${i}: ${categories[categoryIndex].replace(' Series', '').replace(' TV', '')} Show`,
       description: `This is a sample TV show in the ${categories[categoryIndex]} category created because the API data couldn't be loaded.`,
+      startTime: startDate.toISOString(),
       start_time: startDate.toISOString(),
+      endTime: endDate.toISOString(),
       end_time: endDate.toISOString(),
       category: categories[categoryIndex],
       rating: ratings[ratingIndex],

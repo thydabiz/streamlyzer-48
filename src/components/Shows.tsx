@@ -1,7 +1,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { getShows, refreshEPGData } from "@/services/epg";
+import { getTVShows, refreshEPGData } from "@/services/epg";
 import type { EPGProgram } from "@/types/epg";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
@@ -31,7 +31,7 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
       const offset = pageIndex * BATCH_SIZE;
       console.log(`Fetching shows batch: page ${pageIndex}, offset ${offset}`);
       
-      const data = await getShows(offset, BATCH_SIZE);
+      const data = await getTVShows(offset);
       console.log(`Received ${data.length} shows for page ${pageIndex}`);
       
       if (data.length === 0) {
@@ -89,16 +89,14 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
   const handleRefreshData = async () => {
     setRefreshing(true);
     try {
-      const success = await refreshEPGData();
-      if (success) {
-        // Reset and reload shows after successful EPG refresh
-        setShows([]);
-        setPage(0);
-        setHasMore(true);
-        const data = await getShows(0, BATCH_SIZE);
-        setShows(data);
-        toast.success(`Loaded ${data.length} shows after refresh`);
-      }
+      await refreshEPGData();
+      // Reset and reload shows after successful EPG refresh
+      setShows([]);
+      setPage(0);
+      setHasMore(true);
+      const data = await getTVShows(0);
+      setShows(data);
+      toast.success(`Loaded ${data.length} shows after refresh`);
     } catch (error) {
       console.error("Failed to refresh show data:", error);
       toast.error("Failed to refresh show data");
@@ -180,7 +178,7 @@ const Shows = ({ yearFilter, onYearChange, ratingFilter, onRatingChange }: Shows
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filteredShows.map((show) => (
               <button
-                key={show.id}
+                key={show.id || `${show.title}-${show.startTime}`}
                 className="group relative aspect-[2/3] rounded-lg overflow-hidden focus:ring-4 focus:ring-white/20 focus:outline-none"
               >
                 {show.thumbnail ? (
