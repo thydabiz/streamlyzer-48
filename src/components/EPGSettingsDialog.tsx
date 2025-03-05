@@ -1,103 +1,111 @@
+import { Dialog, Transition } from '@headlessui/react';
+import { Fragment, useState } from 'react';
+import { db } from '../services/database';
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Settings, RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
-import { getEPGSettings, saveEPGSettings } from '@/services/iptvService';
-import { refreshEPGData } from '@/services/epg';
+interface EPGSettingsDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
 
-export const EPGSettingsDialog = ({ onRefreshComplete }: { onRefreshComplete?: () => void }) => {
-  const [open, setOpen] = useState(false);
-  const [refreshDays, setRefreshDays] = useState(7);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  useEffect(() => {
-    getEPGSettings().then(settings => {
-      setRefreshDays(settings.refresh_days);
-    });
-  }, []);
+export function EPGSettingsDialog({ isOpen, onClose }: EPGSettingsDialogProps) {
+  const [epgUrl, setEpgUrl] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await saveEPGSettings(refreshDays);
-      setOpen(false);
-      toast.success('EPG settings saved successfully');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save EPG settings');
-    }
-  };
+    setIsLoading(true);
+    setError(null);
 
-  const handleRefreshEPG = async () => {
-    setIsRefreshing(true);
     try {
-      await refreshEPGData();
-      if (onRefreshComplete) {
-        onRefreshComplete();
-      }
-    } catch (error) {
-      // Error handling is done in refreshEPGData
+      await db.settings.put({ key: 'epgUrl', value: epgUrl });
+      onClose();
+    } catch (err) {
+      setError('Failed to save EPG settings');
+      console.error('Error saving EPG settings:', err);
     } finally {
-      setIsRefreshing(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="icon">
-          <Settings className="h-4 w-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>EPG Settings</DialogTitle>
-          <DialogDescription>
-            Configure EPG refresh settings and manage EPG data
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-6 py-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="refreshDays" className="text-sm font-medium">
-                Refresh Interval (days)
-              </label>
-              <Input
-                id="refreshDays"
-                type="number"
-                min="1"
-                max="14"
-                value={refreshDays}
-                onChange={(e) => setRefreshDays(parseInt(e.target.value))}
-              />
-            </div>
-            <Button type="submit" className="w-full">Save settings</Button>
-          </form>
-          
-          <div className="border-t pt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="w-full"
-              onClick={handleRefreshEPG}
-              disabled={isRefreshing}
+    <Transition appear show={isOpen} as={Fragment}>
+      <Dialog as="div" className="relative z-50" onClose={onClose}>
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black bg-opacity-25" />
+        </Transition.Child>
+
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              {isRefreshing ? 'Refreshing EPG...' : 'Refresh EPG Now'}
-            </Button>
+              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-gray-800">
+                <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900 dark:text-white">
+                  EPG Settings
+                </Dialog.Title>
+
+                <form onSubmit={handleSubmit} className="mt-4">
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="epgUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        EPG URL
+                      </label>
+                      <input
+                        type="url"
+                        id="epgUrl"
+                        name="epgUrl"
+                        value={epgUrl}
+                        onChange={(e) => setEpgUrl(e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:text-sm"
+                        placeholder="https://example.com/epg.xml"
+                        required
+                      />
+                    </div>
+
+                    {error && (
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        {error}
+                      </p>
+                    )}
+
+                    <div className="mt-4 flex justify-end space-x-2">
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoading ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </Dialog.Panel>
+            </Transition.Child>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </Dialog>
+    </Transition>
   );
-};
+}

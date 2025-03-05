@@ -1,7 +1,5 @@
-
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
-import StreamCredentialsManager from "./StreamCredentialsManager";
 
 interface NoChannelsMessageProps {
   onRefreshChannels: () => void;
@@ -9,35 +7,34 @@ interface NoChannelsMessageProps {
   isRefreshing: boolean;
 }
 
-const NoChannelsMessage = ({ onRefreshChannels, onRefreshEPG, isRefreshing }: NoChannelsMessageProps) => {
+export const NoChannelsMessage = ({
+  onRefreshChannels,
+  onRefreshEPG,
+  isRefreshing
+}: NoChannelsMessageProps) => {
   return (
-    <div className="text-center p-8 space-y-6">
-      <h2 className="text-2xl font-semibold mb-4">No Channels Available</h2>
-      <p className="text-gray-400 mb-6">
-        Your IPTV provider hasn't provided any channel listings or we couldn't fetch them.
+    <div className="flex flex-col items-center justify-center h-64 space-y-4">
+      <p className="text-lg text-gray-500">
+        No channels found. Please check your stream credentials or try refreshing.
       </p>
-      <div className="flex items-center justify-center gap-4">
-        <StreamCredentialsManager />
-        <Button 
-          onClick={onRefreshChannels} 
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          onClick={onRefreshChannels}
           disabled={isRefreshing}
-          className="flex items-center gap-2"
         >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           Refresh Channels
         </Button>
         <Button
+          variant="outline"
           onClick={onRefreshEPG}
           disabled={isRefreshing}
-          className="flex items-center gap-2"
-          variant="outline"
         >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh EPG Data
+          <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh EPG
         </Button>
       </div>
     </div>
   );
 };
-
-export default NoChannelsMessage;

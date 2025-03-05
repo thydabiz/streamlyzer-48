@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { Channel, EPGProgram } from '@/types/epg';
 import localforage from 'localforage';
@@ -13,7 +12,6 @@ const getChannelsFromCache = async (): Promise<Channel[]> => {
   try {
     return await localforage.getItem<Channel[]>(CHANNELS_CACHE_KEY) || [];
   } catch (error) {
-    console.error('Error getting channels from cache:', error);
     return [];
   }
 };
@@ -23,14 +21,13 @@ const storeChannelsInCache = async (channels: Channel[]): Promise<void> => {
   try {
     await localforage.setItem(CHANNELS_CACHE_KEY, channels);
   } catch (error) {
-    console.error('Error storing channels in cache:', error);
+    // Fail silently
   }
 };
 
 // Fetch programs for a specific channel
 export const fetchProgramsForChannel = async (channelId: string): Promise<EPGProgram[]> => {
   try {
-    console.log(`Fetching programs for channel ${channelId}`);
     // Try to fetch from Supabase first
     const { data, error } = await supabase
       .from('programs')
@@ -43,7 +40,6 @@ export const fetchProgramsForChannel = async (channelId: string): Promise<EPGPro
     }
     
     if (data && data.length > 0) {
-      console.log(`Found ${data.length} programs for channel ${channelId}`);
       // Convert database format to EPGProgram format
       const programs = data.map(item => ({
         id: item.id,
@@ -66,12 +62,10 @@ export const fetchProgramsForChannel = async (channelId: string): Promise<EPGPro
     }
     
     // If no data from database, generate sample programs
-    console.log(`No programs found for channel ${channelId}, generating samples`);
     const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
     await storeProgramsInCache(samplePrograms);
     return samplePrograms;
   } catch (error) {
-    console.error(`Error fetching programs for channel ${channelId}:`, error);
     // Generate sample programs as fallback
     const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
     await storeProgramsInCache(samplePrograms);
@@ -94,7 +88,6 @@ export const getChannels = async (offset: number = 0, limit: number = 100): Prom
     await storeChannelsInCache(sampleChannels);
     return sampleChannels.slice(offset, offset + limit);
   } catch (error) {
-    console.error('Error getting channels:', error);
     // Return sample channels if there's an error
     const sampleChannels = generateSampleChannels(50);
     return sampleChannels.slice(offset, offset + limit);
@@ -117,7 +110,6 @@ export const getProgramSchedule = async (channelId: string): Promise<EPGProgram[
     await storeProgramsInCache(samplePrograms);
     return samplePrograms;
   } catch (error) {
-    console.error('Error getting program schedule:', error);
     const samplePrograms = generateSampleProgramsForChannel(channelId, 10);
     return samplePrograms;
   }
@@ -129,7 +121,6 @@ const getProgramsFromCache = async (channelId: string): Promise<EPGProgram[]> =>
     const programs = await localforage.getItem<Record<string, EPGProgram[]>>('epg_programs') || {};
     return programs[channelId] || [];
   } catch (error) {
-    console.error('Error getting programs from cache:', error);
     return [];
   }
 };
@@ -174,7 +165,7 @@ const storeProgramsInCache = async (programs: EPGProgram[]): Promise<void> => {
     
     await localforage.setItem('epg_programs', programsByChannel);
   } catch (error) {
-    console.error('Error storing programs in cache:', error);
+    // Fail silently
   }
 };
 
@@ -249,7 +240,6 @@ export const getCurrentProgram = async (channelId: string): Promise<EPGProgram |
       return now >= startTime && now <= endTime;
     });
   } catch (error) {
-    console.error('Error getting current program for channel:', error);
     return undefined;
   }
 };
@@ -270,7 +260,6 @@ export const getMovies = async (offset: number = 0, limit: number = 100): Promis
     }
     
     if (data && data.length > 0) {
-      console.log(`Found ${data.length} movies in database`);
       // Convert database format to EPGProgram format
       return data.map(item => ({
         id: item.id,
@@ -289,12 +278,10 @@ export const getMovies = async (offset: number = 0, limit: number = 100): Promis
     }
     
     // No data from database, generate sample movies
-    console.log('Generating sample movies');
     const sampleMovies = generateSampleMovies(100);
     return sampleMovies.slice(offset, offset + limit);
     
   } catch (error) {
-    console.error('Error fetching movies:', error);
     // Generate sample movies as fallback
     const sampleMovies = generateSampleMovies(100);
     return sampleMovies.slice(offset, offset + limit);
@@ -317,7 +304,6 @@ export const getTVShows = async (offset: number = 0, limit: number = 100): Promi
     }
     
     if (data && data.length > 0) {
-      console.log(`Found ${data.length} TV shows in database`);
       // Convert database format to EPGProgram format
       return data.map(item => ({
         id: item.id,
@@ -336,12 +322,10 @@ export const getTVShows = async (offset: number = 0, limit: number = 100): Promi
     }
     
     // No data from database, generate sample TV shows
-    console.log('Generating sample TV shows');
     const sampleShows = generateSampleTVShows(100);
     return sampleShows.slice(offset, offset + limit);
     
   } catch (error) {
-    console.error('Error fetching TV shows:', error);
     // Generate sample TV shows as fallback
     const sampleShows = generateSampleTVShows(100);
     return sampleShows.slice(offset, offset + limit);

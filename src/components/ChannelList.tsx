@@ -1,120 +1,96 @@
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Channel, EPGProgram } from "@/types/epg";
-import ChannelCard from "./ChannelCard";
+import { useEffect } from 'react';
+import { Channel, EPGProgram } from '@/types/epg';
 
 interface ChannelListProps {
   channels: Channel[];
   currentPrograms: Record<string, EPGProgram | undefined>;
   selectedChannel: Channel | null;
   onChannelSelect: (channel: Channel) => void;
-  categoryFilter?: string;
-  onCategoryChange: (category: string | undefined) => void;
-  categories: string[];
 }
 
-const ChannelList = ({
+export const ChannelList = ({
   channels,
   currentPrograms,
   selectedChannel,
   onChannelSelect,
-  categoryFilter,
-  onCategoryChange,
-  categories,
 }: ChannelListProps) => {
-  const [categoryType, setCategoryType] = useState<string>("all");
-  
-  const channelTypes = ["all", "sports", "news", "movies", "kids", "24/7", "ppv", "entertainment"];
+  useEffect(() => {
+    console.log('ChannelList rendered with:', {
+      channelCount: channels.length,
+      programCount: Object.keys(currentPrograms).length,
+      selectedChannelId: selectedChannel?.id
+    });
+  }, [channels, currentPrograms, selectedChannel]);
 
-  const filteredChannels = channels.filter(channel => {
-    const program = currentPrograms[channel.id];
-    
-    if (categoryFilter) {
-      if (!program) return false;
-      if (program.category !== categoryFilter) return false;
-    }
-    
-    if (categoryType !== "all") {
-      if (!program) return false;
-      const categoryMatch = program.category?.toLowerCase().includes(categoryType.toLowerCase());
-      if (!categoryMatch) return false;
-    }
-    
-    return true;
-  });
+  if (!channels || channels.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full p-4 text-gray-500">
+        No channels available
+      </div>
+    );
+  }
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold">All Channels ({filteredChannels.length})</h2>
-        <div className="flex gap-4">
-          <Select value={categoryType} onValueChange={setCategoryType}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              {channelTypes.map(type => (
-                <SelectItem key={type} value={type}>
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {categories.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto max-w-md pb-2">
-              {categories.map(category => (
-                <Button
-                  key={category}
-                  variant={categoryFilter === category ? "default" : "outline"}
-                  onClick={() => onCategoryChange(
-                    categoryFilter === category ? undefined : category
-                  )}
-                  size="sm"
-                >
-                  {category}
-                </Button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredChannels.length > 0 ? (
-          filteredChannels.map((channel) => (
-            <ChannelCard 
+    <div className="flex flex-col h-full">
+      {/* Channel list */}
+      <div className="flex-1 overflow-y-auto">
+        {channels.map(channel => {
+          if (!channel || !channel.id) {
+            console.warn('Invalid channel in list:', channel);
+            return null;
+          }
+
+          return (
+            <button
               key={channel.id}
-              channel={channel}
-              program={currentPrograms[channel.id]}
-              isSelected={selectedChannel?.id === channel.id}
-              onSelect={onChannelSelect}
-            />
-          ))
-        ) : (
-          <div className="col-span-3 text-center py-12">
-            <p className="text-gray-400">No channels match the current filters</p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCategoryType("all");
-                onCategoryChange(undefined);
-              }}
-              className="mt-4"
+              className={`w-full flex items-center gap-3 p-3 hover:bg-gray-100
+                ${selectedChannel?.id === channel.id ? 'bg-blue-50' : ''}`}
+              onClick={() => onChannelSelect(channel)}
             >
-              Clear Filters
-            </Button>
-          </div>
-        )}
+              {/* Channel logo */}
+              <div className="w-12 h-12 flex-shrink-0">
+                {channel.logo ? (
+                  <img
+                    src={channel.logo}
+                    alt={channel.name}
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = ''; // Clear broken image
+                      e.currentTarget.classList.add('bg-gray-200');
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-200 rounded flex items-center justify-center">
+                    <span className="text-gray-400 text-xl">TV</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Channel info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-medium truncate">{channel.name}</h3>
+                  {channel.group && (
+                    <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">
+                      {channel.group}
+                    </span>
+                  )}
+                </div>
+                {currentPrograms[channel.id] && (
+                  <div className="text-sm text-gray-500">
+                    <p className="truncate">{currentPrograms[channel.id]?.title}</p>
+                    {currentPrograms[channel.id]?.category && (
+                      <p className="text-xs text-gray-400">
+                        {currentPrograms[channel.id]?.category}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
-    </section>
+    </div>
   );
 };
-
-export default ChannelList;
