@@ -104,6 +104,7 @@ export const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCat
 
   // Extract country from channel name using regex
   const getCountryFromName = (name: string): string => {
+    if (!name) return 'Uncategorized'; // Check for null or undefined
     const match = name.match(/^\[(.*?)\]/);
     if (match) {
       const country = match[1];
@@ -117,8 +118,8 @@ export const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCat
 
   // Extract category from channel name
   const getCategoryFromName = (name: string): string => {
-    // Remove country code if present
-    const cleanName = name.replace(/^\[.*?\]/, '').trim();
+    if (!name) return 'Uncategorized'; // Check for null or undefined
+    const cleanName = name.replace(/^\[(.*?)\]/, '').trim();
     
     // Check for common categories in the name
     const foundCategory = COMMON_CATEGORIES.find(category => 
@@ -132,11 +133,14 @@ export const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCat
   const { countries, categories, processedChannels } = useMemo(() => {
     if (!channels) return { countries: [], categories: [], processedChannels: [] };
 
-    const processedChannels = channels.map(channel => ({
-      ...channel,
-      country: getCountryFromName(channel.name),
-      category: getCategoryFromName(channel.name)
-    }));
+    const processedChannels = channels.map(channel => {
+      //console.log(`Channel ID: ${channel.id}, EPG ID: ${channel.epgId}`);
+      return ({
+        ...channel,
+        country: getCountryFromName(channel.name),
+        category: getCategoryFromName(channel.name)
+      });
+    });
 
     const countries = Array.from(new Set(processedChannels.map(c => c.country))).sort();
     const categories = Array.from(new Set(processedChannels.map(c => c.category))).sort();
@@ -196,25 +200,16 @@ export const LiveTV = ({ selectedChannel, onChannelSelect, categoryFilter, onCat
         onRefreshEPG={handleRefreshEPG}
         isRefreshing={refreshing}
         onRefreshComplete={() => {}}
+        disabled={showProgramGuide} // Disable when program guide is shown
       />
 
-      <div className="flex-1 overflow-hidden">
-        {showProgramGuide ? (
-          <ProgramGuide
-            channels={filteredChannels}
-            onProgramSelect={(channel, program) => {
-              onChannelSelect(channel);
-              setShowProgramGuide(false);
-            }}
-          />
-        ) : (
-          <ChannelList
-            channels={filteredChannels}
-            currentPrograms={currentPrograms}
-            selectedChannel={selectedChannel}
-            onChannelSelect={onChannelSelect}
-          />
-        )}
+      <div className="flex-1 overflow-y-auto h-[500px]"> 
+        <ChannelList
+          channels={filteredChannels}
+          currentPrograms={currentPrograms}
+          selectedChannel={selectedChannel}
+          onChannelSelect={onChannelSelect}
+        />
       </div>
     </div>
   );

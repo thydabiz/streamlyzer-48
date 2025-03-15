@@ -120,6 +120,10 @@ export const ProgramGuide = ({ channels, onProgramSelect }: ProgramGuideProps) =
           {channels.slice(0, (page + 1) * CHANNELS_PER_PAGE).map(channel => {
             const programs = schedules[channel.id] || [];
             
+            if (!channel.epgId) {
+              return <div key={channel.id}>No Program Guide Available</div>;
+            }
+            
             return (
               <div key={channel.id} className="flex border-b hover:bg-gray-50 dark:hover:bg-gray-700">
                 {/* Channel info */}

@@ -8,27 +8,30 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({ channel, autoQuality = true }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<VideoPlayerService | null>(null);
+  const videoRef = useRef<HTMLDivElement>(null);
+  const videoPlayerService = VideoPlayerService.getInstance();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isChannelLoaded, setIsChannelLoaded] = useState(false); // New state
 
   useEffect(() => {
     if (!videoRef.current) return;
 
     setIsLoading(true);
     setError(null);
+    setIsChannelLoaded(false); // Reset on channel change
 
-    // Initialize player
-    playerRef.current = new VideoPlayerService(videoRef.current);
-    if (autoQuality) {
-      playerRef.current.enableAutoQuality();
+    // Get the video element from VideoPlayerService
+    const videoElement = videoPlayerService.getVideoElement();
+    if (videoElement) {
+      videoRef.current.appendChild(videoElement);
     }
 
     // Load channel
-    playerRef.current.loadChannel(channel)
+    videoPlayerService.loadChannel(channel)
       .then(() => {
         setIsLoading(false);
+        setIsChannelLoaded(true); // Set to true after successful load
       })
       .catch(err => {
         console.error('Failed to load channel:', err);
@@ -38,27 +41,20 @@ export function VideoPlayer({ channel, autoQuality = true }: VideoPlayerProps) {
 
     // Cleanup
     return () => {
-      playerRef.current?.destroyPlayer();
+      if (isChannelLoaded) {
+        videoPlayerService.destroyPlayer();
+      }
     };
-  }, [channel, autoQuality]);
+  }, [channel]);
 
-  // Handle video errors
-  const handleVideoError = () => {
-    setError('Video playback error. Please try again.');
-    setIsLoading(false);
-  };
+  useEffect(() => {
+    if (isChannelLoaded && autoQuality) {
+      videoPlayerService.enableAutoQuality();
+    }
+  }, [isChannelLoaded, autoQuality, videoPlayerService]);
 
   return (
-    <div className="relative w-full aspect-video bg-black">
-      <video
-        ref={videoRef}
-        controls
-        className="w-full h-full"
-        playsInline
-        onError={handleVideoError}
-        poster={channel.logo}
-      />
-
+    <div className="relative w-full aspect-video bg-black" ref={videoRef}>
       {/* Loading Spinner */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50">
