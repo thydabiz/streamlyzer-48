@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Channel } from '../services/database/schema';
 import { VideoPlayerService } from '../services/player/VideoPlayerService';
 
@@ -13,6 +13,13 @@ export function VideoPlayer({ channel, autoQuality = true }: VideoPlayerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isChannelLoaded, setIsChannelLoaded] = useState(false); // New state
+  
+  // Get the video element from VideoPlayerService
+  const videoElement = videoPlayerService.getVideoElement();
+
+  const enableAutoQuality = useCallback(() => {
+    videoPlayerService.enableAutoQuality();
+  }, [videoPlayerService]);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -21,8 +28,6 @@ export function VideoPlayer({ channel, autoQuality = true }: VideoPlayerProps) {
     setError(null);
     setIsChannelLoaded(false); // Reset on channel change
 
-    // Get the video element from VideoPlayerService
-    const videoElement = videoPlayerService.getVideoElement();
     if (videoElement) {
       videoRef.current.appendChild(videoElement);
     }
@@ -45,13 +50,13 @@ export function VideoPlayer({ channel, autoQuality = true }: VideoPlayerProps) {
         videoPlayerService.destroyPlayer();
       }
     };
-  }, [channel]);
+  }, [channel, videoElement, videoPlayerService]);
 
   useEffect(() => {
     if (isChannelLoaded && autoQuality) {
-      videoPlayerService.enableAutoQuality();
+      enableAutoQuality();
     }
-  }, [isChannelLoaded, autoQuality, videoPlayerService]);
+  }, [isChannelLoaded, autoQuality, enableAutoQuality]);
 
   return (
     <div className="relative w-full aspect-video bg-black" ref={videoRef}>

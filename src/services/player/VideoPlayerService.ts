@@ -24,7 +24,6 @@ export class VideoPlayerService {
         this.videoElement = document.createElement('video');
         this.videoElement.controls = true;
         this.videoElement.autoplay = true;
-        //this.videoElement.muted = true;
     }
 
     public static getInstance(): VideoPlayerService {
@@ -57,25 +56,8 @@ export class VideoPlayerService {
             console.log('HLS.js instance initialized.');
         }
         this.hls.attachMedia(this.videoElement);
-        this.hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-                switch (data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        this.handleNetworkError();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        this.handleMediaError();
-                        break;
-                    case Hls.ErrorTypes.OTHER_ERROR:
-                        console.error('Error encountered:', data);
-                        break;
-                    default:
-                        console.error('Unhandled error:', data);
-                }
-            }
-        });
+        this.hls.on(Hls.Events.ERROR, this.onError);
     }
-
 
     async loadChannel(channel: Channel): Promise<void> {
         if (!this.videoElement) return;
@@ -98,7 +80,6 @@ export class VideoPlayerService {
 
             // Try loading with different extensions
             const extensions = ['', '.m3u8', '.ts'];
-            const errors: Error[] = [];
             let streamLoaded = false;
             for (const ext of extensions) {
                 try {
@@ -108,17 +89,10 @@ export class VideoPlayerService {
                     this.currentStreamUrl = urlWithExt; // Update currentStreamUrl here!
                     return; // Stop further attempts if successful
                 } catch (error) {
-                    console.error('Error loading stream:', error);
-                    errors.push(error as Error);
                     console.warn(`Attempt failed with extension ${ext}:`, error);
                 }
             }
-            if (errors.length > 0) {
-                const combinedError = new Error('Failed to load stream after all attempts');
-                combinedError.stack = errors.map(e => e.stack).join('\n');
-                throw combinedError;
-            }
-            if (!streamLoaded && this.currentStreamUrl) {
+            if (!streamLoaded) {
                 this.currentStreamUrl = null;
             }
             if (this.currentStreamUrl === streamUrl) {
@@ -202,29 +176,29 @@ export class VideoPlayerService {
     }
 
     private handleMediaError(): Promise<void> {
-      console.log('Media error, attempting to recover...');
-      if (!this.hls) {
-          console.error('HLS.js instance is not initialized.');
-          return Promise.reject(new Error('HLS.js instance is not initialized.'));
-      }
-      this.hls.recoverMediaError();
-      return new Promise<void>((resolve, reject) => { // Explicitly Promise<void>
-          setTimeout(() => {
-              if (this.hls?.media?.error) {
-                  console.error('Media error recovery failed.');
-                  reject(new Error('Media error recovery failed.'));
-              } else {
-                  resolve(); // Resolving with void (no value)
-              }
-          }, 3000); // Check after 3 seconds
-      });
-  }
-  
+        console.log('Media error, attempting to recover...');
+        if (!this.hls) {
+            console.error('HLS.js instance is not initialized.');
+            return Promise.reject(new Error('HLS.js instance is not initialized.'));
+        }
+        this.hls.recoverMediaError();
+        return new Promise<void>((resolve, reject) => { // Explicitly Promise<void>
+            setTimeout(() => {
+                if (this.hls?.media?.error) {
+                    console.error('Media error recovery failed.');
+                    reject(new Error('Media error recovery failed.'));
+                } else {
+                    resolve(); // Resolving with void (no value)
+                }
+            }, 3000); // Check after 3 seconds
+        });
+    }
+
     setQuality(level: number) {
         if (this.hls) { // Check if the player exists before trying to use it.
             this.hls.currentLevel = level;
         } else {
-          console.warn("Attempted to call 'setQuality' but HLS.js instance is not initialized.");
+            console.warn("Attempted to call 'setQuality' but HLS.js instance is not initialized.");
         }
     }
 
@@ -232,7 +206,7 @@ export class VideoPlayerService {
         if (this.hls) { // Check if the player exists before trying to use it.
             this.hls.currentLevel = -1; // Auto quality
         } else {
-          console.warn("Attempted to call 'enableAutoQuality' but HLS.js instance is not initialized.");
+            console.warn("Attempted to call 'enableAutoQuality' but HLS.js instance is not initialized.");
         }
     }
 
